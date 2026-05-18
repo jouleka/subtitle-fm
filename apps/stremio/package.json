@@ -1,0 +1,21 @@
+{
+  "name": "@subtitle-fm/stremio",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "bun --hot src/index.ts",
+    "start": "bun src/index.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@subtitle-fm/shared": "workspace:*",
+    "stremio-addon-sdk": "^1.6.10"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.0",
+    "@types/node": "^22.10.0",
+    "typescript": "^5.7.0"
+  }
+}

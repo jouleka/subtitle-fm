@@ -1,0 +1,79 @@
+# Subtitle.fm
+
+Community-driven fansub platform with AI bootstrap. See [docs/superpowers/specs/2026-05-17-subtitle-fm-design.md](docs/superpowers/specs/2026-05-17-subtitle-fm-design.md) for the full design.
+
+## Stack
+
+| Piece | Tech |
+|---|---|
+| API | Hono on Bun (TypeScript) |
+| Web editor | SvelteKit + JASSUB + peaks.js + Yjs |
+| Realtime collab server | Hocuspocus (Node) |
+| Stremio addon | stremio-addon-sdk (Node) |
+| ASR / translation worker | Python + faster-whisper + anime-whisper + Demucs |
+| Database | Postgres (Drizzle ORM) |
+| Queue | BullMQ on Redis |
+| Object storage | Cloudflare R2 |
+| GPU host | RunPod serverless RTX 4090 |
+| Payments | Lemon Squeezy (merchant of record) |
+
+## Layout
+
+```
+subtitle-fm/
+├── apps/
+│   ├── api/         # Hono REST API
+│   ├── web/         # SvelteKit editor
+│   ├── stremio/     # Stremio subtitle addon
+│   ├── collab/      # Hocuspocus realtime server
+│   └── worker/      # Python ASR + translation worker
+├── packages/
+│   ├── shared/      # Shared TS types
+│   ├── db/          # Drizzle schema + migrations
+│   └── ass/         # ASS parse/serialize helpers
+└── docs/
+    └── superpowers/specs/   # Design spec
+```
+
+## Prerequisites
+
+- Bun >= 1.3
+- Node >= 22 (Hocuspocus runtime)
+- Python >= 3.11
+- ffmpeg
+- Postgres 15+ (local) or Neon (prod)
+- Redis (local) or Upstash (prod)
+
+## Setup
+
+```bash
+# Install Bun workspace deps
+bun install
+
+# Python worker
+cd apps/worker && uv sync && cd ../..
+
+# Env
+cp .env.example .env
+# fill in values
+
+# DB
+bun run db:generate
+bun run db:migrate
+```
+
+## Dev
+
+```bash
+bun run dev:api      # http://localhost:3000
+bun run dev:web      # http://localhost:5173
+bun run dev:collab   # ws://localhost:1234
+bun run dev:stremio  # http://localhost:7000
+
+# Python worker
+cd apps/worker && uv run python -m subtitle_worker
+```
+
+## Status
+
+Pre-alpha scaffold. See design doc for roadmap.
