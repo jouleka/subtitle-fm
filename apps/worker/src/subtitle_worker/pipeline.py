@@ -1,13 +1,23 @@
 """Pipeline stages: preprocess -> ASR -> translate -> emit ASS.
 
-Each stage is intentionally a stub. Real implementations land in Phase 1
-of the design doc.
+The TS worker-runner dispatches per-stage jobs to this Python service on
+RunPod. Each stage reads inputs from R2, runs its work, writes outputs back
+to R2, and posts a webhook back to the api so the next stage can be
+enqueued.
+
+Stage status:
+ - preprocess: SFM-12 (this slice)
+ - demucs: SFM-13
+ - asr: SFM-14
+ - translate: SFM-15
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from subtitle_worker.stages.preprocess import preprocess_for_asr
 
 
 @dataclass
@@ -26,22 +36,25 @@ class TranscriptSegment:
 
 
 def preprocess_audio(input_path: Path, work_dir: Path) -> Path:
-    """ffmpeg extract -> scene-detect OP/ED trim -> Demucs vocals isolation."""
-    raise NotImplementedError
+    """Extract audio + trim OP/ED. Demucs vocal isolation lands in SFM-13."""
+    return preprocess_for_asr(input_path, work_dir)
 
 
 def transcribe(audio_path: Path) -> list[TranscriptSegment]:
-    """faster-whisper + anime-whisper inference."""
+    """faster-whisper + anime-whisper inference. SFM-14."""
     raise NotImplementedError
 
 
-def translate(segments: list[TranscriptSegment], glossary: dict[str, str]) -> list[TranscriptSegment]:
-    """Claude with episode-level context + show glossary."""
+def translate(
+    segments: list[TranscriptSegment],
+    glossary: dict[str, str],
+) -> list[TranscriptSegment]:
+    """Claude with episode-level context + show glossary. SFM-15."""
     raise NotImplementedError
 
 
 def emit_ass(segments: list[TranscriptSegment], out_path: Path) -> None:
-    """Write Advanced SubStation Alpha file."""
+    """Write Advanced SubStation Alpha file. Reuses @subtitle-fm/ass conventions."""
     raise NotImplementedError
 
 
