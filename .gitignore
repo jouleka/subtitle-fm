@@ -84,3 +84,8 @@ coverage/
 tmp/
 temp/
 *.tmp
+
+# Local Claude / superpowers infrastructure — never commit
+CLAUDE.md
+.claude/
+docs/superpowers/

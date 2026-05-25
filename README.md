@@ -1,6 +1,6 @@
 # Subtitle.fm
 
-Community-driven fansub platform with AI bootstrap. See [docs/superpowers/specs/2026-05-17-subtitle-fm-design.md](docs/superpowers/specs/2026-05-17-subtitle-fm-design.md) for the full design.
+Community-driven fansub platform with AI bootstrap.
 
 ## Stack
 
