@@ -8,6 +8,7 @@
     "apps/web",
     "apps/stremio",
     "apps/collab",
+    "apps/worker-runner",
     "packages/shared",
     "packages/db",
     "packages/ass"
@@ -17,6 +18,7 @@
     "dev:web": "bun run --filter @subtitle-fm/web dev",
     "dev:stremio": "bun run --filter @subtitle-fm/stremio dev",
     "dev:collab": "bun run --filter @subtitle-fm/collab dev",
+    "dev:worker": "bun run --filter @subtitle-fm/worker-runner dev",
     "build": "bun run --filter '*' build",
     "typecheck": "bun run --filter '*' typecheck",
     "db:generate": "bun run --filter @subtitle-fm/db generate",

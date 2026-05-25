@@ -1,16 +1,11 @@
 import { Queue } from 'bullmq';
 import IORedis from 'ioredis';
+import { QUEUE_NAMES, type JobPayloadByQueue } from '@subtitle-fm/shared';
 
 /**
- * Queue topology:
- *
- * preprocess  → fan-out: fetch source, trim OP/ED, isolate vocals, generate peaks
- * transcribe  → invoke RunPod serverless with anime-whisper, return segments
- * translate   → Claude translation pass with show glossary
- * publish     → emit .ass / .srt / .vtt, mark episode published
- *
- * Producers live in the api; consumers live in a separate `apps/worker-runner`
- * Node service (not yet scaffolded) that dispatches to RunPod.
+ * Producer-side queue instances. Consumers live in apps/worker-runner.
+ * Queue names + job payload types are defined in @subtitle-fm/shared
+ * so both ends stay aligned.
  */
 
 const redisUrl = process.env.REDIS_URL ?? 'redis://localhost:6379';
@@ -19,12 +14,15 @@ export const connection = new IORedis(redisUrl, {
   maxRetriesPerRequest: null,
 });
 
-export const preprocessQueue = new Queue('preprocess', { connection });
-export const transcribeQueue = new Queue('transcribe', { connection });
-export const translateQueue = new Queue('translate', { connection });
-export const publishQueue = new Queue('publish', { connection });
-
-export interface PreprocessJob {
-  episodeId: string;
-  sourceUrl: string;
-}
+export const preprocessQueue = new Queue<JobPayloadByQueue['preprocess']>(QUEUE_NAMES.preprocess, {
+  connection,
+});
+export const transcribeQueue = new Queue<JobPayloadByQueue['transcribe']>(QUEUE_NAMES.transcribe, {
+  connection,
+});
+export const translateQueue = new Queue<JobPayloadByQueue['translate']>(QUEUE_NAMES.translate, {
+  connection,
+});
+export const publishQueue = new Queue<JobPayloadByQueue['publish']>(QUEUE_NAMES.publish, {
+  connection,
+});

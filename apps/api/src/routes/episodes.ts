@@ -4,7 +4,8 @@ import { z } from 'zod';
 import { and, eq } from 'drizzle-orm';
 import { schema } from '@subtitle-fm/db';
 import { db } from '../lib/db';
-import { preprocessQueue, type PreprocessJob } from '../lib/queue';
+import { preprocessQueue } from '../lib/queue';
+import type { PreprocessJob } from '@subtitle-fm/shared';
 import { log } from '../lib/log';
 
 const createEpisodeSchema = z.object({
