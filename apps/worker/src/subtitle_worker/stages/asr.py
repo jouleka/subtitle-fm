@@ -44,19 +44,24 @@ log = structlog.get_logger(__name__)
 
 @dataclass(frozen=True)
 class TranscriptSegment:
-    """One Whisper-output dialogue segment.
+    """One dialogue segment as it flows through ASR → translate → DB.
 
     Times are integer milliseconds (matches the DB schema's `cues.startMs` /
     `cues.endMs` columns). `confidence` is `exp(avg_logprob)` — the
     geometric mean of per-token probabilities, NOT a joint probability.
     Values are in (0, 1]; below ~0.37 (Whisper's own low-confidence line)
     are typically flagged for human review by the translation stage.
+
+    `needs_review` defaults False — ASR doesn't set it (the threshold is
+    applied at the translate stage so the human + machine flags converge
+    on one boolean by the time the editor sees it).
     """
 
     start_ms: int
     end_ms: int
     text: str
     confidence: float
+    needs_review: bool = False
 
 
 class FasterWhisperNotAvailable(RuntimeError):

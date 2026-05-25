@@ -19,6 +19,7 @@ from pathlib import Path
 
 from subtitle_worker.stages.asr import TranscriptSegment, transcribe_audio
 from subtitle_worker.stages.preprocess import preprocess_for_asr
+from subtitle_worker.stages.translate import GlossaryEntry, translate_segments
 from subtitle_worker.stages.vocals import isolate_vocals
 
 
@@ -26,7 +27,7 @@ from subtitle_worker.stages.vocals import isolate_vocals
 class EpisodeJob:
     episode_id: str
     source_url: str
-    show_glossary: dict[str, str]
+    show_glossary: list[GlossaryEntry]
 
 
 def preprocess_audio(input_path: Path, work_dir: Path) -> Path:
@@ -46,10 +47,11 @@ def transcribe(audio_path: Path) -> list[TranscriptSegment]:
 
 def translate(
     segments: list[TranscriptSegment],
-    glossary: dict[str, str],
+    glossary: list[GlossaryEntry],
+    show_title: str | None = None,
 ) -> list[TranscriptSegment]:
     """Claude with episode-level context + show glossary. SFM-15."""
-    raise NotImplementedError
+    return translate_segments(segments, glossary, show_title=show_title)
 
 
 def emit_ass(segments: list[TranscriptSegment], out_path: Path) -> None:
