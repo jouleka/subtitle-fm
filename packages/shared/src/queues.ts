@@ -11,6 +11,21 @@ export const QUEUE_NAMES = {
   publish: 'publish',
 } as const;
 
+/**
+ * BullMQ job options applied to every queue add() in the system. Lives here
+ * so api + worker-runner can't drift — one source of truth for retry
+ * behaviour, retention, and backoff.
+ *
+ * Spread with `jobId`:
+ *   queue.add(name, payload, { jobId: episodeId, ...JOB_OPTS_DEFAULT })
+ */
+export const JOB_OPTS_DEFAULT = {
+  removeOnComplete: { count: 1000 },
+  removeOnFail: { count: 1000 },
+  attempts: 3,
+  backoff: { type: 'exponential', delay: 5_000 },
+} as const;
+
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
 export interface PreprocessJob {

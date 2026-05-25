@@ -16,3 +16,5 @@ export function getDb(connectionString?: string) {
 }
 
 export type Db = ReturnType<typeof getDb>;
+
+export { advanceEpisodeStatus, failEpisode, type AdvanceResult } from './episodes';

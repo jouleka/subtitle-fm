@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import {
+  JOB_OPTS_DEFAULT,
   QUEUE_NAMES,
   type JobPayloadByQueue,
   type QueueName,
@@ -35,13 +36,7 @@ export async function enqueue<Q extends QueueName>(
   // function boundary. BullMQ's per-queue name-typing is messy through
   // indexed access, so loosen to Queue<unknown> just for the .add call.
   const queue = queues[name] as unknown as Queue<unknown>;
-  await queue.add(name, payload, {
-    jobId,
-    removeOnComplete: { count: 1000 },
-    removeOnFail: { count: 1000 },
-    attempts: 3,
-    backoff: { type: 'exponential', delay: 5_000 },
-  });
+  await queue.add(name, payload, { jobId, ...JOB_OPTS_DEFAULT });
 }
 
 /**

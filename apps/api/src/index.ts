@@ -5,6 +5,7 @@ import { health } from './routes/health';
 import { episodes } from './routes/episodes';
 import { shows } from './routes/shows';
 import { uploads } from './routes/uploads';
+import { webhooksRunpod } from './routes/webhooks-runpod';
 import { log } from './lib/log';
 
 const app = new Hono();
@@ -16,6 +17,7 @@ app.route('/health', health);
 app.route('/shows', shows);
 app.route('/episodes', episodes);
 app.route('/uploads', uploads);
+app.route('/webhooks/runpod', webhooksRunpod);
 
 const port = Number(process.env.API_PORT ?? 3000);
 log.info({ port }, 'api.listen');

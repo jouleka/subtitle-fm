@@ -5,7 +5,7 @@ import { and, eq } from 'drizzle-orm';
 import { schema } from '@subtitle-fm/db';
 import { db } from '../lib/db';
 import { preprocessQueue } from '../lib/queue';
-import type { PreprocessJob } from '@subtitle-fm/shared';
+import { JOB_OPTS_DEFAULT, type PreprocessJob } from '@subtitle-fm/shared';
 import { log } from '../lib/log';
 
 const createEpisodeSchema = z.object({
@@ -76,10 +76,7 @@ export const episodes = new Hono()
     const job: PreprocessJob = { episodeId: episode.id, sourceUrl: input.sourceUrl };
     await preprocessQueue.add('preprocess', job, {
       jobId: episode.id,
-      removeOnComplete: { count: 1000 },
-      removeOnFail: { count: 1000 },
-      attempts: 3,
-      backoff: { type: 'exponential', delay: 5_000 },
+      ...JOB_OPTS_DEFAULT,
     });
 
     log.info({ episodeId: episode.id, showId: input.showId }, 'episode.created');
