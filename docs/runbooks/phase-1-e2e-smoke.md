@@ -16,7 +16,7 @@ Phase 1 has **no authentication** on the api (auth lands in SFM-20). The driver 
 ### Accounts + credentials
 - **Cloudflare R2** — account + an API token with `Object Read & Write`. You need two buckets: `subtitle-fm-media` (source uploads) and `subtitle-fm-peaks` (waveform peaks, Phase 2 use). Set a lifecycle rule on `media` that's **at least as long as your longest expected queue dwell** — the api hands out 7-day presigned GET URLs to the worker, so a shorter lifecycle would invalidate them mid-pipeline if a stage is stuck. Start with 7 days and tune later.
 - **Anthropic API key** — used by the translate stage.
-- **RunPod serverless endpoint** running the Python worker image. Set `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID`. (For a CPU-only / no-RunPod run, leave `WORKER_MODE` unset and the worker-runner stays in **stub mode** — useful for verifying the queue plumbing but the test will reach `ready_for_edit` without real transcripts. Stub mode logs a loud warning on boot.)
+- **RunPod serverless endpoint** running the Python worker image. Build + push the image per [`apps/worker/README.md`](../../apps/worker/README.md#docker--runpod-deploy), then create a serverless endpoint pointing at it. Set `RUNPOD_API_KEY` and `RUNPOD_ENDPOINT_ID` in the api's `.env`. (For a CPU-only / no-RunPod run, leave `WORKER_MODE` unset and the worker-runner stays in **stub mode** — useful for verifying the queue plumbing but the test will reach `ready_for_edit` without real transcripts. Stub mode logs a loud warning on boot.)
 
 ### Source media
 - 5 anime episode source files (MKV/MP4). Each needs to be reachable as an HTTPS URL the worker can fetch.

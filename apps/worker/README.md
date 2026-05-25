@@ -4,12 +4,12 @@ Python worker. Runs the ASR + translation pipeline on a GPU host (RunPod RTX 409
 
 ## Stages
 
-1. `ffmpeg` extract WAV 16kHz mono
-2. `PySceneDetect` to trim OP/ED
-3. `Demucs` (htdemucs) for vocal isolation
-4. `faster-whisper` with `litagin/anime-whisper` model
-5. Claude (Sonnet 4.6) translation with per-show glossary
-6. Emit `.ass` and POST back to API
+1. `ffmpeg` extract WAV 16kHz mono + leading/trailing trim (`stages/preprocess.py`)
+2. `Demucs` (htdemucs) for vocal isolation (`stages/vocals.py`)
+3. `faster-whisper` with `litagin/anime-whisper` model (`stages/asr.py`)
+4. Claude (Sonnet 4.6) translation with per-show glossary (`stages/translate.py`)
+5. Stage handler (`handler.py`) uploads outputs to R2 and POSTs a signed
+   webhook back to the api (`/webhooks/runpod`)
 
 ## Local dev
 
@@ -40,9 +40,53 @@ locally (`brew install ffmpeg`, `apt install ffmpeg`) to run the full
 integration suite. Scene-detection tests skip when `scenedetect` is not
 installed.
 
+## Docker / RunPod deploy
+
+```bash
+# Build the container (from this directory)
+docker build -t subtitle-fm-worker:latest .
+
+# Smoke-test locally — the handler exits since no RunPod queue is attached,
+# but you can verify the image boots and imports cleanly.
+docker run --rm -e WORKER_WEBHOOK_SECRET=local-test subtitle-fm-worker:latest \
+  python -c "from subtitle_worker.handler import handler; print('handler ok')"
+
+# Push to a registry RunPod can pull from (Docker Hub, GHCR, etc.)
+docker tag subtitle-fm-worker:latest <registry>/subtitle-fm-worker:latest
+docker push <registry>/subtitle-fm-worker:latest
+```
+
+Then on RunPod:
+
+1. Create a **Serverless Endpoint** pointing at the image
+2. Set env vars on the endpoint:
+   - `WORKER_WEBHOOK_SECRET` — must match the api's `.env`
+   - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` — for
+     stage artifact upload/download
+   - `ANTHROPIC_API_KEY` — for the translate stage
+3. Capture the **Endpoint ID** and set it as `RUNPOD_ENDPOINT_ID` in the
+   api's `.env`. Set `WORKER_MODE=runpod` on the worker-runner to flip
+   dispatch from stub to real.
+
+The default base image is CPU-only `python:3.11-slim` (small, fast push).
+For real GPU inference swap line 1 of `Dockerfile` to a CUDA base like
+`runpod/pytorch:2.5.1-py3.11-cuda12.4` and rebuild — nothing else changes.
+
+### Trust model
+
+The handler dereferences whatever `sourceUrl` / `audioUrl` / `transcriptUrl`
+the dispatcher provides. That's safe today because the RunPod endpoint is
+gated by `RUNPOD_API_KEY` (only our api can invoke it), the first-stage
+`sourceUrl` is a presigned R2 GET URL the api itself issued, and downstream
+stages receive bare R2 keys the worker fetches with its own credentials.
+Treat `RUNPOD_API_KEY` as the security boundary — without that gate the
+worker has an SSRF surface.
+
 ## Notes
 
-- GPU required for real ASR. CPU works for smoke tests with `tiny` model.
-- Model weights pulled at first inference from HuggingFace; cache under `hf_cache/`.
+- GPU required for production ASR / vocal isolation. CPU works for
+  smoke tests with the `tiny` Whisper model.
+- Model weights pulled at first inference from HuggingFace; cache under
+  `hf_cache/` (bake this into your container image for faster cold starts).
 - See `pipeline.py` for the staged interface; per-stage implementations
   live under `stages/`.

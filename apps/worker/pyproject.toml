@@ -30,6 +30,11 @@ dev = [
     "pytest>=8.3.0",
     "pytest-asyncio>=0.24.0",
 ]
+# Only needed when running as a RunPod serverless container.
+# Kept out of the default install so local dev doesn't pull it.
+runpod = [
+    "runpod>=1.7.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
