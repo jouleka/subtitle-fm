@@ -40,6 +40,50 @@ locally (`brew install ffmpeg`, `apt install ffmpeg`) to run the full
 integration suite. Scene-detection tests skip when `scenedetect` is not
 installed.
 
+## Local pipeline (no api / no RunPod)
+
+Run the full pipeline on a local audio file with just a Claude or OpenAI
+key — useful for quality testing without the full Path B infrastructure.
+
+> First run downloads ~230MB of model weights (Whisper base + Demucs htdemucs)
+> to `~/.cache`. Subsequent runs use the local cache.
+
+```bash
+# Setup (one-time)
+brew install ffmpeg
+cd apps/worker
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,openai]"   # or ".[dev]" if you only need Claude
+export OPENAI_API_KEY=sk-...     # or ANTHROPIC_API_KEY
+
+# Run on a local file. On an M-series Mac with CPU + Demucs enabled,
+# expect ~5-10x realtime end-to-end (Demucs is the slow part). Pass
+# --no-vocals for ~2-3x realtime at the cost of more hallucination
+# on BGM-heavy clips.
+PYTHONPATH=src python -m subtitle_worker.local_pipeline \
+  ~/Downloads/test-clip.mp3 \
+  --show 'Show Name' \
+  --model base
+```
+
+Provider selection (auto):
+- `LLM_PROVIDER=claude|openai` explicit, OR
+- `ANTHROPIC_API_KEY` set → Claude, OR
+- `OPENAI_API_KEY` set → OpenAI
+
+CPU performance knobs:
+- `--model tiny` — fast (~75MB), garbage on Japanese; use only for plumbing tests
+- `--model base` — default (~150MB), tolerable on clean speech
+- `--model small` or `medium` — better quality, slower; large-v3 is too slow for CPU
+- `--no-vocals` — skip Demucs (saves ~5x audio length); BGM-heavy clips will hallucinate more
+- `--no-preprocess` — skip ffmpeg trim (pass a 16kHz mono WAV directly)
+
+Output is sent to stdout; per-stage progress to stderr so you can redirect:
+
+```bash
+PYTHONPATH=src python -m subtitle_worker.local_pipeline clip.mp3 > subs.txt
+```
+
 ## Docker / RunPod deploy
 
 ```bash

@@ -16,12 +16,16 @@ import pytest
 from subtitle_worker.stages.asr import TranscriptSegment
 from subtitle_worker.stages.translate import (
     DEFAULT_MODEL,
+    DEFAULT_OPENAI_MODEL,
     LOW_CONFIDENCE_THRESHOLD,
     AnthropicNotAvailable,
     GlossaryEntry,
+    OpenAINotAvailable,
+    _resolve_provider,
     build_system_prompt,
     build_user_prompt,
     check_anthropic_available,
+    check_openai_available,
     merge_translation,
     parse_translation_response,
     translate_segments,
@@ -258,14 +262,18 @@ def test_check_anthropic_available_raises_when_missing(
 
 
 class StubClient:
-    """Minimal AnthropicClient stub; captures the request, returns a fixed body."""
+    """Minimal LLMClient stub; captures the request, returns a fixed body.
+
+    Keyword-only signature mirrors the Protocol exactly so a future
+    refactor that adds positional-arg validation surfaces a mismatch.
+    """
 
     def __init__(self, response_text: str) -> None:
         self.response_text = response_text
         self.last_call: dict[str, object] = {}
 
     def messages_create(
-        self, model: str, max_tokens: int, system: str, user: str
+        self, *, model: str, max_tokens: int, system: str, user: str
     ) -> str:
         self.last_call = {
             "model": model,
@@ -320,9 +328,135 @@ def test_default_model_is_pinned() -> None:
     assert DEFAULT_MODEL == "claude-sonnet-4-6"
 
 
+def test_default_openai_model_is_pinned_to_snapshot() -> None:
+    # Pin a dated snapshot, NOT the bare `gpt-4o` alias — the alias has
+    # historically routed to a 4096-output snapshot which silently
+    # truncates long episode JSON and breaks parse_translation_response.
+    assert DEFAULT_OPENAI_MODEL == "gpt-4o-2024-08-06"
+
+
 def test_low_confidence_threshold_matches_whisper_baseline() -> None:
     # 0.37 ≈ exp(-1.0) — Whisper's own "low confidence" line. If the SFM-14
     # confidence semantics change, this value must change too.
     import math
 
     assert LOW_CONFIDENCE_THRESHOLD == pytest.approx(math.exp(-1.0), abs=0.01)
+
+
+# ---------------------------------------------------------------------------
+# Provider resolution
+# ---------------------------------------------------------------------------
+
+
+class TestResolveProvider:
+    """Tests don't actually call OpenAI/Anthropic — they verify the routing
+    by checking which `check_*_available` would be triggered. We monkeypatch
+    those to throw `Skip` so a passing/failing match indicates which branch
+    was selected.
+    """
+
+    def test_raises_when_no_provider_configured(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        with pytest.raises(RuntimeError, match="No LLM provider"):
+            _resolve_provider(None)
+
+    def test_explicit_provider_claude_overrides_openai_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # LLM_PROVIDER=claude must win even if only OPENAI_API_KEY is set.
+        monkeypatch.setenv("LLM_PROVIDER", "claude")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # required by precheck
+        called = {"anthropic": False, "openai": False}
+        import subtitle_worker.stages.translate as t
+
+        monkeypatch.setattr(t, "_build_anthropic_client", lambda: called.__setitem__("anthropic", True) or "ANTH")
+        monkeypatch.setattr(t, "_build_openai_client", lambda: called.__setitem__("openai", True) or "OAI")
+        client, model = _resolve_provider(None)
+        assert client == "ANTH"
+        assert model == DEFAULT_MODEL
+        assert called == {"anthropic": True, "openai": False}
+
+    def test_explicit_provider_openai_overrides_anthropic_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "openai")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")  # required by precheck
+        import subtitle_worker.stages.translate as t
+
+        monkeypatch.setattr(t, "_build_anthropic_client", lambda: "ANTH")
+        monkeypatch.setattr(t, "_build_openai_client", lambda: "OAI")
+        client, model = _resolve_provider(None)
+        assert client == "OAI"
+        assert model == DEFAULT_OPENAI_MODEL
+
+    def test_explicit_claude_without_anth_key_raises_actionable_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Friendlier than letting Anthropic() throw a generic "no API key"
+        # from inside the SDK.
+        monkeypatch.setenv("LLM_PROVIDER", "claude")
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")  # red herring
+        with pytest.raises(RuntimeError, match="ANTHROPIC_API_KEY"):
+            _resolve_provider(None)
+
+    def test_explicit_openai_without_openai_key_raises_actionable_error(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "openai")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")  # red herring
+        with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
+            _resolve_provider(None)
+
+    def test_auto_picks_anthropic_when_only_anth_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-ant-test")
+        monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+        import subtitle_worker.stages.translate as t
+
+        monkeypatch.setattr(t, "_build_anthropic_client", lambda: "ANTH")
+        monkeypatch.setattr(t, "_build_openai_client", lambda: "OAI")
+        client, _ = _resolve_provider(None)
+        assert client == "ANTH"
+
+    def test_auto_picks_openai_when_only_openai_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.delenv("LLM_PROVIDER", raising=False)
+        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        import subtitle_worker.stages.translate as t
+
+        monkeypatch.setattr(t, "_build_anthropic_client", lambda: "ANTH")
+        monkeypatch.setattr(t, "_build_openai_client", lambda: "OAI")
+        client, model = _resolve_provider(None)
+        assert client == "OAI"
+        assert model == DEFAULT_OPENAI_MODEL
+
+    def test_explicit_model_overrides_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("LLM_PROVIDER", "openai")
+        monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+        import subtitle_worker.stages.translate as t
+
+        monkeypatch.setattr(t, "_build_openai_client", lambda: "OAI")
+        _, model = _resolve_provider("gpt-4o-mini")
+        assert model == "gpt-4o-mini"
+
+
+def test_check_openai_available_raises_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(sys.modules, "openai", None)
+    with pytest.raises(OpenAINotAvailable):
+        check_openai_available()

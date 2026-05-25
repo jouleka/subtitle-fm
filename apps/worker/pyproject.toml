@@ -35,6 +35,11 @@ dev = [
 runpod = [
     "runpod>=1.7.0",
 ]
+# OpenAI as an alternative translate provider — useful when you have an
+# OpenAI key but not an Anthropic one (e.g. for local pipeline testing).
+openai = [
+    "openai>=1.50.0",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

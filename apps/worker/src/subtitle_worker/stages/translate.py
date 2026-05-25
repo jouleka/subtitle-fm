@@ -19,6 +19,7 @@ Cost target per SFM-A-1: <$0.10 per 22-min episode.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from dataclasses import dataclass
@@ -29,6 +30,10 @@ import structlog
 from subtitle_worker.stages.asr import TranscriptSegment
 
 DEFAULT_MODEL = "claude-sonnet-4-6"
+# Pinned snapshot so we get the 16k output token cap. The bare `gpt-4o`
+# alias historically routed to a 4096-output snapshot for some accounts,
+# which silently truncates long episode responses and breaks JSON parsing.
+DEFAULT_OPENAI_MODEL = "gpt-4o-2024-08-06"
 DEFAULT_MAX_TOKENS = 16384
 LOW_CONFIDENCE_THRESHOLD = 0.37  # matches Whisper's avg_logprob < -1.0 line
 
@@ -52,22 +57,28 @@ class AnthropicNotAvailable(RuntimeError):
     """Raised when the anthropic SDK cannot be imported."""
 
 
-class AnthropicClient(Protocol):
-    """The slice of the anthropic SDK we actually use.
+class OpenAINotAvailable(RuntimeError):
+    """Raised when the openai SDK cannot be imported."""
 
-    Letting callers pass a stub matching this protocol makes the
-    orchestrator testable without a real API key.
 
-    Keyword-only call signature so swapping argument order at a stub call
-    site can't silently corrupt the request (e.g. user/system getting
-    flipped).
+class LLMClient(Protocol):
+    """Provider-neutral protocol for the one LLM call this stage makes.
+
+    Lets us swap Claude / OpenAI / a test stub behind the same call site.
+    Keyword-only signature so a positional call can't silently swap
+    user/system content.
     """
 
     def messages_create(
         self, *, model: str, max_tokens: int, system: str, user: str
     ) -> str:
-        """Send one request, return the raw text Claude produced."""
+        """Send one request, return the raw text the model produced."""
         ...
+
+
+# Back-compat alias — earlier code referred to this as AnthropicClient.
+# Keep it exported so anything importing the old name still works.
+AnthropicClient = LLMClient
 
 
 def check_anthropic_available() -> None:
@@ -78,6 +89,17 @@ def check_anthropic_available() -> None:
         raise AnthropicNotAvailable(
             "anthropic SDK not importable. Install with `pip install anthropic`. "
             "On RunPod images the SDK is pre-baked into the container."
+        ) from e
+
+
+def check_openai_available() -> None:
+    """Fail loud if the openai SDK isn't installed."""
+    try:
+        import openai  # noqa: F401
+    except ImportError as e:
+        raise OpenAINotAvailable(
+            "openai SDK not importable. Install with `pip install openai` "
+            "(or `pip install -e '.[openai]'` from apps/worker)."
         ) from e
 
 
@@ -232,17 +254,26 @@ def translate_segments(
     glossary: list[GlossaryEntry],
     show_title: str | None = None,
     style_notes: str | None = None,
-    model: str = DEFAULT_MODEL,
+    model: str | None = None,
     max_tokens: int = DEFAULT_MAX_TOKENS,
-    client: AnthropicClient | None = None,
+    client: LLMClient | None = None,
 ) -> list[TranscriptSegment]:
-    """End-to-end translation: build prompts, call Claude, merge results.
+    """End-to-end translation: build prompts, call the LLM, merge results.
 
-    Pass `client` to inject a stub matching `AnthropicClient` for tests.
-    With `client=None` we lazily construct the real anthropic SDK.
+    Provider selection (when `client=None`):
+      - explicit `LLM_PROVIDER` env (`claude` | `openai`) wins
+      - else: `ANTHROPIC_API_KEY` set → claude
+      - else: `OPENAI_API_KEY` set → openai
+      - else: raise
+
+    Pass `client` to inject a stub matching `LLMClient` for tests.
     """
     if not segments:
         return []
+
+    resolved_client, provider_model = (
+        (client, model or DEFAULT_MODEL) if client else _resolve_provider(model)
+    )
 
     system_prompt = build_system_prompt(glossary, style_notes=style_notes)
     user_prompt = build_user_prompt(segments, show_title=show_title)
@@ -251,13 +282,13 @@ def translate_segments(
         "translate.start",
         segments=len(segments),
         glossary_entries=len(glossary),
-        model=model,
+        model=provider_model,
         show=show_title,
     )
     start = time.monotonic()
 
-    raw = (client or _default_client()).messages_create(
-        model=model,
+    raw = resolved_client.messages_create(
+        model=provider_model,
         max_tokens=max_tokens,
         system=system_prompt,
         user=user_prompt,
@@ -291,14 +322,44 @@ def translate_segments(
     return merged
 
 
-def _default_client() -> AnthropicClient:
-    """Build the real anthropic-SDK-backed client. Imports the SDK lazily."""
+def _resolve_provider(model: str | None) -> tuple[LLMClient, str]:
+    """Pick a provider + model based on LLM_PROVIDER env or available keys.
+
+    When LLM_PROVIDER is explicit we pre-check the matching API key is set
+    so the failure surfaces the env var name the user got wrong, instead
+    of letting the SDK throw a generic "no API key provided" error.
+    """
+    explicit = os.environ.get("LLM_PROVIDER", "").strip().lower()
+    if explicit == "claude":
+        if not os.environ.get("ANTHROPIC_API_KEY"):
+            raise RuntimeError(
+                "LLM_PROVIDER=claude but ANTHROPIC_API_KEY is not set"
+            )
+        return _build_anthropic_client(), model or DEFAULT_MODEL
+    if explicit == "openai":
+        if not os.environ.get("OPENAI_API_KEY"):
+            raise RuntimeError(
+                "LLM_PROVIDER=openai but OPENAI_API_KEY is not set"
+            )
+        return _build_openai_client(), model or DEFAULT_OPENAI_MODEL
+    if not explicit and os.environ.get("ANTHROPIC_API_KEY"):
+        return _build_anthropic_client(), model or DEFAULT_MODEL
+    if not explicit and os.environ.get("OPENAI_API_KEY"):
+        return _build_openai_client(), model or DEFAULT_OPENAI_MODEL
+    raise RuntimeError(
+        "No LLM provider configured: set ANTHROPIC_API_KEY or OPENAI_API_KEY "
+        "(or LLM_PROVIDER=claude|openai)."
+    )
+
+
+def _build_anthropic_client() -> LLMClient:
+    """Anthropic-SDK-backed client. Lazy import."""
     check_anthropic_available()
     from anthropic import Anthropic
 
     underlying = Anthropic()
 
-    class _SdkClient:
+    class _AnthropicAdapter:
         def messages_create(
             self, *, model: str, max_tokens: int, system: str, user: str
         ) -> str:
@@ -321,4 +382,40 @@ def _default_client() -> AnthropicClient:
                         parts.append(text)
             return "".join(parts)
 
-    return _SdkClient()
+    return _AnthropicAdapter()
+
+
+def _build_openai_client() -> LLMClient:
+    """OpenAI-SDK-backed client. Lazy import.
+
+    Maps our (system, user) pair into OpenAI's role-based messages list.
+    `system` becomes a `role=system` entry; the OpenAI API doesn't have a
+    separate top-level system parameter like Anthropic does.
+    """
+    check_openai_available()
+    from openai import OpenAI
+
+    underlying = OpenAI()
+
+    class _OpenAIAdapter:
+        def messages_create(
+            self, *, model: str, max_tokens: int, system: str, user: str
+        ) -> str:
+            response = underlying.chat.completions.create(
+                model=model,
+                max_tokens=max_tokens,
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user},
+                ],
+            )
+            choice = response.choices[0] if response.choices else None
+            if not choice or not choice.message or not choice.message.content:
+                raise RuntimeError(
+                    f"openai response missing content: {response.model_dump_json()}"
+                )
+            return choice.message.content
+
+    return _OpenAIAdapter()
+
+
