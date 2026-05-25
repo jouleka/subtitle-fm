@@ -50,16 +50,25 @@ subtitle-fm/
 # Install Bun workspace deps
 bun install
 
-# Python worker
+# Python worker (optional locally — runs on RunPod in prod)
 cd apps/worker && uv sync && cd ../..
 
 # Env
 cp .env.example .env
-# fill in values
+# fill in values (DATABASE_URL and REDIS_URL match docker-compose defaults)
 
-# DB
-bun run db:generate
+# Local services (Postgres 16 + Redis 7)
+docker compose up -d
+
+# DB migrations
 bun run db:migrate
+```
+
+### Regenerating migrations after schema changes
+
+```bash
+bun run db:generate   # writes packages/db/migrations/NNNN_*.sql
+bun run db:migrate    # applies to DATABASE_URL
 ```
 
 ## Dev
