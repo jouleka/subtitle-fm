@@ -6,10 +6,10 @@ to R2, and posts a webhook back to the api so the next stage can be
 enqueued.
 
 Stage status:
- - preprocess: SFM-12 (this slice)
- - demucs: SFM-13
- - asr: SFM-14
- - translate: SFM-15
+ - preprocess: SFM-12 (extract + trim)
+ - vocals: SFM-13 (Demucs isolation)
+ - asr: SFM-14 (faster-whisper + anime-whisper)
+ - translate: SFM-15 (Claude with show glossary)
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 
+from subtitle_worker.stages.asr import TranscriptSegment, transcribe_audio
 from subtitle_worker.stages.preprocess import preprocess_for_asr
 from subtitle_worker.stages.vocals import isolate_vocals
 
@@ -26,14 +27,6 @@ class EpisodeJob:
     episode_id: str
     source_url: str
     show_glossary: dict[str, str]
-
-
-@dataclass
-class TranscriptSegment:
-    start_ms: int
-    end_ms: int
-    text: str
-    confidence: float
 
 
 def preprocess_audio(input_path: Path, work_dir: Path) -> Path:
@@ -48,7 +41,7 @@ def preprocess_audio(input_path: Path, work_dir: Path) -> Path:
 
 def transcribe(audio_path: Path) -> list[TranscriptSegment]:
     """faster-whisper + anime-whisper inference. SFM-14."""
-    raise NotImplementedError
+    return transcribe_audio(audio_path)
 
 
 def translate(
