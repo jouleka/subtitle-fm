@@ -1,0 +1,10 @@
+[
+  {
+    "showId": "smoke-test-show",
+    "showTitle": "Smoke Test Show",
+    "showSlug": "smoke-test-show",
+    "number": 1,
+    "title": "Episode 1",
+    "sourceUrl": "REPLACE_ME_with_a_presigned_R2_GET_url_or_any_public_https_video_url"
+  }
+]

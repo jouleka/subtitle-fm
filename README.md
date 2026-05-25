@@ -83,6 +83,13 @@ bun run dev:stremio  # http://localhost:7000
 cd apps/worker && uv run python -m subtitle_worker
 ```
 
+## End-to-end smoke test
+
+Phase 1's exit gate. Drives 5 sample episodes through the full pipeline
+and verifies each reaches `ready_for_edit`. See
+[`docs/runbooks/phase-1-e2e-smoke.md`](docs/runbooks/phase-1-e2e-smoke.md)
+for setup and `bun run smoke` to execute.
+
 ## Status
 
 Pre-alpha scaffold. See design doc for roadmap.

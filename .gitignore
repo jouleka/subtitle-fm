@@ -89,3 +89,6 @@ temp/
 CLAUDE.md
 .claude/
 docs/superpowers/
+
+# Smoke-test config holds personal R2 URLs / show ids — keep local only
+scripts/smoke-test.episodes.json
