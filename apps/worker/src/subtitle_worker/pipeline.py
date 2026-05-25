@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from subtitle_worker.stages.preprocess import preprocess_for_asr
+from subtitle_worker.stages.vocals import isolate_vocals
 
 
 @dataclass
@@ -36,8 +37,13 @@ class TranscriptSegment:
 
 
 def preprocess_audio(input_path: Path, work_dir: Path) -> Path:
-    """Extract audio + trim OP/ED. Demucs vocal isolation lands in SFM-13."""
-    return preprocess_for_asr(input_path, work_dir)
+    """Extract audio + trim OP/ED, then isolate vocals via Demucs.
+
+    Returns the vocals-only WAV path, ready for faster-whisper (SFM-14).
+    """
+    trimmed = preprocess_for_asr(input_path, work_dir)
+    vocals = isolate_vocals(trimmed, work_dir)
+    return vocals.vocals_path
 
 
 def transcribe(audio_path: Path) -> list[TranscriptSegment]:
