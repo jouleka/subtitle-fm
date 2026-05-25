@@ -14,6 +14,9 @@ const stageEnum = z.enum(['preprocess', 'transcribe', 'translate', 'publish']);
 const baseFields = {
   eventId: z.string().min(1).max(255),
   episodeId: z.string().uuid(),
+  /** Per-pass id minted at POST /episodes; threaded through every stage so
+   * a legitimate reprocess gets distinct eventIds and isn't dedupe-dropped. */
+  pipelineRunId: z.string().uuid(),
 };
 
 /**
@@ -148,6 +151,7 @@ export const webhooksRunpod = new Hono().post('/', async (c) => {
     }
     const next: JobPayloadByQueue['transcribe'] = {
       episodeId: parsed.episodeId,
+      pipelineRunId: parsed.pipelineRunId,
       audioUrl: parsed.output.audioKey,
     };
     await transcribeQueue.add('transcribe', next, {
@@ -171,6 +175,7 @@ export const webhooksRunpod = new Hono().post('/', async (c) => {
     }
     const next: JobPayloadByQueue['translate'] = {
       episodeId: parsed.episodeId,
+      pipelineRunId: parsed.pipelineRunId,
       transcriptUrl: parsed.output.transcriptKey,
     };
     await translateQueue.add('translate', next, {

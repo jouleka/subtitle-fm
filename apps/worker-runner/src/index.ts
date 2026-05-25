@@ -11,14 +11,17 @@ import { handlePublish } from './handlers/publish';
 const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 2);
 
 /**
- * Stub-mode banner. Default until RunPod is wired and WORKER_MODE flips.
- * Logged at warn so it stands out in any log aggregation.
+ * Boot banner. Loud warn in stub mode so an operator doesn't mistake faked
+ * pipeline progress for real work; one-line info in runpod mode so the
+ * mode is at least observable in the log stream.
  */
-if (process.env.WORKER_MODE !== 'runpod') {
+if (process.env.WORKER_MODE === 'runpod') {
+  log.info('worker.mode.runpod: dispatching preprocess/transcribe/translate to RunPod');
+} else {
   log.warn(
     'STUB MODE: preprocess/transcribe/translate handlers fake the pipeline ' +
       'and advance state without real ASR or translation. Episodes will reach ' +
-      'ready_for_edit with no actual subtitles.',
+      'ready_for_edit with no actual subtitles. Set WORKER_MODE=runpod for real work.',
   );
 }
 

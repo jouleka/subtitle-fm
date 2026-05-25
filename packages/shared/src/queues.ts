@@ -28,23 +28,35 @@ export const JOB_OPTS_DEFAULT = {
 
 export type QueueName = (typeof QUEUE_NAMES)[keyof typeof QUEUE_NAMES];
 
+/**
+ * Minted once per pipeline pass (POST /episodes creates one; manual reprocess
+ * mints a fresh one). Threads through every stage so the webhook receiver's
+ * idempotency PK is unique-per-pass — without it, a reprocess collides with
+ * the original pass's eventId and the webhook is silently dropped.
+ */
+export type PipelineRunId = string;
+
 export interface PreprocessJob {
   episodeId: string;
+  pipelineRunId: PipelineRunId;
   sourceUrl: string;
 }
 
 export interface TranscribeJob {
   episodeId: string;
+  pipelineRunId: PipelineRunId;
   audioUrl: string;
 }
 
 export interface TranslateJob {
   episodeId: string;
+  pipelineRunId: PipelineRunId;
   transcriptUrl: string;
 }
 
 export interface PublishJob {
   episodeId: string;
+  pipelineRunId: PipelineRunId;
   formats: ReadonlyArray<'ass' | 'srt' | 'vtt'>;
 }
 

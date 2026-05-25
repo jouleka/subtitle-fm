@@ -3,24 +3,25 @@ import type { PreprocessJob } from '@subtitle-fm/shared';
 import { db } from '../lib/db';
 import { advanceEpisodeStatus } from '../lib/episode-status';
 import { enqueue } from '../lib/dispatch';
+import { buildEventId, dispatchToRunpod, getWebhookUrl, isRunpodMode } from '../lib/runpod';
 import { log } from '../lib/log';
 
 /**
- * Stub implementation. In production this dispatches to RunPod serverless
- * (audio extract + OP/ED trim + Demucs vocal isolation + peaks generation);
- * RunPod posts results back to /webhooks/runpod, which advances state and
- * enqueues `transcribe`.
+ * Preprocess stage: extract audio, trim OP/ED, isolate vocals, generate
+ * waveform peaks. GPU-bound — runs on RunPod when WORKER_MODE=runpod.
  *
- * In stub mode we simulate the dispatch + completion synchronously so the
- * pipeline progresses locally without GPU access.
+ * In runpod mode we advance `uploaded → preprocessing`, dispatch the job
+ * to RunPod with a webhook URL pointing at our /webhooks/runpod, and
+ * return. The Python worker POSTs the completion (HMAC-signed with its
+ * own env-resident secret) which advances state to `transcribing` and
+ * enqueues the next stage.
  *
- * Idempotency: state transitions are forward-only via advanceEpisodeStatus.
- * A retry against an already-advanced episode logs and skips downstream
- * work rather than rewinding state.
+ * In stub mode we synthesize the entire flow inline so the local pipeline
+ * progresses visibly without GPU access.
  */
 export async function handlePreprocess(job: Job<PreprocessJob>) {
-  const { episodeId, sourceUrl } = job.data;
-  log.info({ episodeId, sourceUrl, jobId: job.id }, 'preprocess.start');
+  const { episodeId, pipelineRunId, sourceUrl } = job.data;
+  log.info({ episodeId, pipelineRunId, sourceUrl, jobId: job.id }, 'preprocess.start');
 
   const start = await advanceEpisodeStatus(db, episodeId, {
     from: ['uploaded'],
@@ -34,14 +35,27 @@ export async function handlePreprocess(job: Job<PreprocessJob>) {
     return;
   }
 
-  // TODO(runpod): real handler dispatches the RunPod job here and returns;
-  // the webhook receiver advances to 'transcribing' and enqueues the next
-  // stage. The stub does both steps inline so the pipeline visibly flows.
-  //
-  // Defensive: in mixed environments where stub mode runs alongside a real
-  // RunPod webhook (rare but possible during cutover), the webhook could
-  // race this handler and advance state between the two calls. Treat that
-  // as a hand-off, not a bug — log and exit.
+  if (isRunpodMode()) {
+    const eventId = buildEventId(episodeId, 'preprocess', pipelineRunId);
+    // TODO(sweeper): persist runId on the episode so a future watchdog can
+    // poll RunPod /status for jobs whose webhook never arrived.
+    const result = await dispatchToRunpod({
+      episodeId,
+      stage: 'preprocess',
+      eventId,
+      pipelineRunId,
+      webhookUrl: getWebhookUrl(),
+      sourceUrl,
+    });
+    log.info(
+      { episodeId, eventId, runId: result.runId, status: result.status },
+      'preprocess.dispatched',
+    );
+    return;
+  }
+
+  // Stub mode fall-through: simulate the webhook callback inline. Defensive
+  // hand-off check covers the unlikely race where webhook + stub coexist.
   const handoff = await advanceEpisodeStatus(db, episodeId, {
     from: ['preprocessing'],
     to: 'transcribing',
@@ -53,7 +67,7 @@ export async function handlePreprocess(job: Job<PreprocessJob>) {
     );
     return;
   }
-  await enqueue('transcribe', { episodeId, audioUrl: sourceUrl }, episodeId);
+  await enqueue('transcribe', { episodeId, pipelineRunId, audioUrl: sourceUrl }, episodeId);
 
-  log.warn({ episodeId }, 'preprocess.stubbed.skipped');
+  log.warn({ episodeId }, 'preprocess.stubbed.done');
 }

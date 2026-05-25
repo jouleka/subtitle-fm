@@ -73,7 +73,11 @@ export const episodes = new Hono()
       return c.json({ error: 'insert_failed' }, 500);
     }
 
-    const job: PreprocessJob = { episodeId: episode.id, sourceUrl: input.sourceUrl };
+    const job: PreprocessJob = {
+      episodeId: episode.id,
+      pipelineRunId: crypto.randomUUID(),
+      sourceUrl: input.sourceUrl,
+    };
     await preprocessQueue.add('preprocess', job, {
       jobId: episode.id,
       ...JOB_OPTS_DEFAULT,

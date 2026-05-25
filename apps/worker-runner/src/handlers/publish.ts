@@ -12,8 +12,8 @@ import { log } from '../lib/log';
  * the only transition driven by an explicit human action.
  */
 export async function handlePublish(job: Job<PublishJob>) {
-  const { episodeId, formats } = job.data;
-  log.info({ episodeId, formats, jobId: job.id }, 'publish.start');
+  const { episodeId, pipelineRunId, formats } = job.data;
+  log.info({ episodeId, pipelineRunId, formats, jobId: job.id }, 'publish.start');
 
   const result = await advanceEpisodeStatus(db, episodeId, {
     from: ['ready_for_edit', 'in_review'],
