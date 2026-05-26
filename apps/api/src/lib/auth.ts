@@ -1,7 +1,32 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { eq } from "drizzle-orm";
 import { schema } from "@subtitle-fm/db";
 import { db } from "./db";
+
+const HANDLE_MAX_SUFFIX = 999;
+
+async function handleExists(handle: string): Promise<boolean> {
+  const [row] = await db
+    .select({ id: schema.users.id })
+    .from(schema.users)
+    .where(eq(schema.users.handle, handle))
+    .limit(1);
+  return Boolean(row);
+}
+
+export async function resolveHandleConflict(baseHandle: string): Promise<string> {
+  let candidate = baseHandle;
+  let suffix = 2;
+  while (await handleExists(candidate)) {
+    candidate = `${baseHandle}-${suffix}`;
+    suffix++;
+    if (suffix > HANDLE_MAX_SUFFIX) {
+      throw new Error(`handle '${baseHandle}' exhausted suffix range`);
+    }
+  }
+  return candidate;
+}
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:5173";
 
@@ -51,6 +76,18 @@ export const auth = betterAuth({
         discordId: profile.id,
         email: profile.email ?? `${profile.id}@discord.placeholder.local`,
       }),
+    },
+  },
+
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => {
+          const base = ((user as { name?: string }).name) ?? "user";
+          const resolved = await resolveHandleConflict(base);
+          return { data: { ...user, name: resolved } };
+        },
+      },
     },
   },
 });
