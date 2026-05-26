@@ -26,6 +26,8 @@ async function cleanup() {
   // Clean episodes for the test show
   await db.delete(schema.episodes).where(eq(schema.episodes.showId, TEST_SHOW_ID));
   await db.delete(schema.shows).where(eq(schema.shows.id, TEST_SHOW_ID));
+  // Also clean the 201-happy-path side-effect row in case the inline delete didn't run
+  await db.delete(schema.shows).where(eq(schema.shows.slug, "authed-test-show-sfm-20"));
 }
 
 beforeAll(async () => {

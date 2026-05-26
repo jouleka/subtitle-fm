@@ -9,9 +9,9 @@ export const verifications = pgTable(
     expiresAt: timestamp('expires_at', { withTimezone: true }).notNull(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
       .defaultNow()
-      .$onUpdate(() => new Date())
-      .notNull(),
+      .$onUpdate(() => new Date()),
   },
   (t) => ({
     identifierIdx: index('verifications_identifier_idx').on(t.identifier),

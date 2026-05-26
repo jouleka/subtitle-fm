@@ -26,6 +26,9 @@ app.use(
   }),
 );
 
+// Auth handler is mounted BEFORE attachSession on purpose: Better Auth handles
+// /api/auth/* requests itself and returns a Response (no next()), so attachSession
+// is skipped for those paths. Keep this ordering when adding new global middleware.
 app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
 
 app.use('*', attachSession);
