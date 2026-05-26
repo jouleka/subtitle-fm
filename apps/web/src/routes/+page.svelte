@@ -4,9 +4,12 @@
   let { data } = $props<{ data: { session: { user?: { name?: string } } | null } }>();
 
   async function signInDiscord() {
+    // Absolute URL: Better Auth resolves relative callbackURLs against the api's
+    // origin (:3000), not the web's (:5173). Sending the full origin keeps the
+    // post-callback redirect on the web app.
     await authClient.signIn.social({
       provider: "discord",
-      callbackURL: "/",
+      callbackURL: `${window.location.origin}/`,
     });
   }
 
