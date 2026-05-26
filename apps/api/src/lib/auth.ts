@@ -36,11 +36,14 @@ export const auth = betterAuth({
 
   database: drizzleAdapter(db, {
     provider: "pg",
+    // Keys must match modelName (set below for user/session/account/verification).
+    // Better Auth looks up the Drizzle table by the configured modelName, not by its
+    // default singular model name.
     schema: {
-      user: schema.users,
-      session: schema.sessions,
-      account: schema.accounts,
-      verification: schema.verifications,
+      users: schema.users,
+      sessions: schema.sessions,
+      accounts: schema.accounts,
+      verifications: schema.verifications,
     },
   }),
 
