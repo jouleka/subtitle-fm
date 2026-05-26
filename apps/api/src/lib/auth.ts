@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { schema } from "@subtitle-fm/db";
 import { db } from "./db";
 
 const WEB_URL = process.env.WEB_URL ?? "http://localhost:5173";
@@ -8,7 +9,15 @@ export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
   trustedOrigins: [WEB_URL],
 
-  database: drizzleAdapter(db, { provider: "pg" }),
+  database: drizzleAdapter(db, {
+    provider: "pg",
+    schema: {
+      user: schema.users,
+      session: schema.sessions,
+      account: schema.accounts,
+      verification: schema.verifications,
+    },
+  }),
 
   advanced: {
     database: { generateId: "uuid" },
