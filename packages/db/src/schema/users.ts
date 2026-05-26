@@ -20,7 +20,10 @@ export const users = pgTable(
     reputation: integer('reputation').notNull().default(0),
     role: userRoleEnum('role').notNull().default('editor'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp('updated_at', { withTimezone: true })
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
   },
   (t) => ({
     discordIdx: uniqueIndex('users_discord_id_idx').on(t.discordId),
