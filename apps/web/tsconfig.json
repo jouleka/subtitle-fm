@@ -10,7 +10,7 @@
     "sourceMap": true,
     "strict": true,
     "moduleResolution": "bundler",
-    "types": ["bun/bun"]
+    "types": ["bun"]
   },
   "exclude": ["**/*.test.ts"]
 }
