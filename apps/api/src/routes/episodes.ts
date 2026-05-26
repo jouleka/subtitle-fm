@@ -7,6 +7,7 @@ import { db } from '../lib/db';
 import { preprocessQueue } from '../lib/queue';
 import { JOB_OPTS_DEFAULT, type PreprocessJob } from '@subtitle-fm/shared';
 import { log } from '../lib/log';
+import { requireSession, type AuthVariables } from '../lib/session';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
@@ -17,7 +18,7 @@ const createEpisodeSchema = z.object({
   targetLanguage: z.string().default('en'),
 });
 
-export const episodes = new Hono()
+export const episodes = new Hono<{ Variables: AuthVariables }>()
   .get('/', async (c) => {
     const rows = await db.select().from(schema.episodes).limit(100);
     return c.json({ episodes: rows });
@@ -32,7 +33,7 @@ export const episodes = new Hono()
     if (!row) return c.json({ error: 'not_found' }, 404);
     return c.json(row);
   })
-  .post('/', zValidator('json', createEpisodeSchema), async (c) => {
+  .post('/', requireSession, zValidator('json', createEpisodeSchema), async (c) => {
     const input = c.req.valid('json');
 
     const [show] = await db

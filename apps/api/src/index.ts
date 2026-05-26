@@ -6,12 +6,29 @@ import { episodes } from './routes/episodes';
 import { shows } from './routes/shows';
 import { uploads } from './routes/uploads';
 import { webhooksRunpod } from './routes/webhooks-runpod';
+import { auth } from './lib/auth';
+import { attachSession, type AuthVariables } from './lib/session';
 import { log } from './lib/log';
 
-export const app = new Hono();
+const WEB_ORIGIN = process.env.WEB_URL ?? 'http://localhost:5173';
+
+export const app = new Hono<{ Variables: AuthVariables }>();
 
 app.use('*', httpLogger((msg) => log.info(msg)));
-app.use('*', cors({ origin: '*' }));
+
+app.use(
+  '*',
+  cors({
+    origin: WEB_ORIGIN,
+    allowHeaders: ['Content-Type', 'Authorization'],
+    allowMethods: ['GET', 'POST', 'OPTIONS'],
+    credentials: true,
+  }),
+);
+
+app.on(['GET', 'POST'], '/api/auth/*', (c) => auth.handler(c.req.raw));
+
+app.use('*', attachSession);
 
 app.route('/health', health);
 app.route('/shows', shows);

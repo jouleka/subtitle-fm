@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { eq } from 'drizzle-orm';
 import { schema } from '@subtitle-fm/db';
 import { db } from '../lib/db';
+import { requireSession, type AuthVariables } from '../lib/session';
 
 const createShowSchema = z.object({
   id: z.string().min(1).max(64),
@@ -19,7 +20,7 @@ const createShowSchema = z.object({
   coverUrl: z.string().url().optional(),
 });
 
-export const shows = new Hono()
+export const shows = new Hono<{ Variables: AuthVariables }>()
   .get('/', async (c) => {
     const rows = await db.select().from(schema.shows).limit(100);
     return c.json({ shows: rows });
@@ -30,7 +31,7 @@ export const shows = new Hono()
     if (!row) return c.json({ error: 'not_found' }, 404);
     return c.json(row);
   })
-  .post('/', zValidator('json', createShowSchema), async (c) => {
+  .post('/', requireSession, zValidator('json', createShowSchema), async (c) => {
     const input = c.req.valid('json');
     const [row] = await db
       .insert(schema.shows)
