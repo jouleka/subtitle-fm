@@ -6,7 +6,6 @@ const WEB_URL = process.env.WEB_URL ?? "http://localhost:5173";
 
 export const auth = betterAuth({
   baseURL: process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
-  secret: process.env.BETTER_AUTH_SECRET ?? "",
   trustedOrigins: [WEB_URL],
 
   database: drizzleAdapter(db, { provider: "pg" }),
@@ -38,14 +37,10 @@ export const auth = betterAuth({
     discord: {
       clientId: process.env.DISCORD_CLIENT_ID ?? "",
       clientSecret: process.env.DISCORD_CLIENT_SECRET ?? "",
-      scope: ["identify", "email"],
       mapProfileToUser: (profile) => ({
         name: profile.username, // writes to "handle" column via fields.name
         discordId: profile.id,
         email: profile.email ?? `${profile.id}@discord.placeholder.local`,
-        image: profile.avatar
-          ? `https://cdn.discordapp.com/avatars/${profile.id}/${profile.avatar}.png`
-          : undefined,
       }),
     },
   },
