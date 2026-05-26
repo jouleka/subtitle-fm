@@ -24,6 +24,6 @@ export const accounts = pgTable(
       .$onUpdate(() => new Date()),
   },
   (t) => ({
-    userIdIdx: index('accounts_userId_idx').on(t.userId),
+    userIdIdx: index('accounts_user_id_idx').on(t.userId),
   }),
 );
