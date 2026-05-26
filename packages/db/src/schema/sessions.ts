@@ -9,8 +9,9 @@ export const sessions = pgTable(
     token: text('token').notNull().unique(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
-      .$onUpdate(() => new Date())
-      .notNull(),
+      .notNull()
+      .defaultNow()
+      .$onUpdate(() => new Date()),
     ipAddress: text('ip_address'),
     userAgent: text('user_agent'),
     userId: uuid('user_id')
