@@ -13,7 +13,7 @@
     "@subtitle-fm/ass": "workspace:*",
     "@subtitle-fm/shared": "workspace:*",
     "ass-compiler": "^0.1.16",
-    "better-auth": "^1.6.11",
+    "better-auth": "1.6.11",
     "jassub": "^1.8.5",
     "peaks.js": "^3.4.0",
     "y-protocols": "^1.0.6",
