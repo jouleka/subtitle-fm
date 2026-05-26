@@ -1,12 +1,11 @@
 import type { LayoutServerLoad } from "./$types";
-
-const API_URL = process.env.PUBLIC_API_URL ?? "http://localhost:3000";
+import { PUBLIC_API_URL } from "$env/static/public";
 
 export const load: LayoutServerLoad = async ({ request, fetch }) => {
   const cookie = request.headers.get("cookie") ?? "";
 
   try {
-    const res = await fetch(`${API_URL}/api/auth/get-session`, {
+    const res = await fetch(`${PUBLIC_API_URL}/api/auth/get-session`, {
       headers: { cookie },
     });
     if (!res.ok) return { session: null };
