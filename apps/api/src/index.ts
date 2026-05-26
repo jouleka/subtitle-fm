@@ -8,7 +8,7 @@ import { uploads } from './routes/uploads';
 import { webhooksRunpod } from './routes/webhooks-runpod';
 import { log } from './lib/log';
 
-const app = new Hono();
+export const app = new Hono();
 
 app.use('*', httpLogger((msg) => log.info(msg)));
 app.use('*', cors({ origin: '*' }));
