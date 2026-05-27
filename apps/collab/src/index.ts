@@ -1,17 +1,17 @@
-import { Server } from '@hocuspocus/server';
-import { Logger } from '@hocuspocus/extension-logger';
+import { Server } from "@hocuspocus/server";
+import { Logger } from "@hocuspocus/extension-logger";
+import { authenticateToken } from "./auth";
+import { databaseExtension } from "./persistence";
 
 const port = Number(process.env.COLLAB_PORT ?? 1234);
 
 const server = new Server({
   port,
-  extensions: [new Logger()],
+  extensions: [new Logger(), databaseExtension],
 
   async onAuthenticate({ token }) {
-    if (process.env.NODE_ENV === 'production' && !token) {
-      throw new Error('auth required');
-    }
-    return { user: { id: 'anon' } };
+    const user = await authenticateToken(token);
+    return { user };
   },
 });
 
