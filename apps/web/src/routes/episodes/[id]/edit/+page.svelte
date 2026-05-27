@@ -1,13 +1,79 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import type { PageData } from "./$types";
+  import { HocuspocusProvider } from "@hocuspocus/provider";
+  import {
+    CUES_ARRAY_KEY,
+    liveCuesFromDoc,
+    type LiveCue,
+  } from "@subtitle-fm/shared/yjs";
+  import { PUBLIC_COLLAB_URL } from "$env/static/public";
+  import { readSessionToken } from "$lib/session-token";
   import { formatMs } from "$lib/format";
+  import type { Cue } from "$lib/types";
 
   let { data }: { data: PageData } = $props();
 
+  function restCueToLive(c: Cue): LiveCue {
+    return {
+      id: c.id,
+      orderIndex: c.orderIndex,
+      startMs: c.startMs,
+      endMs: c.endMs,
+      text: c.text,
+      rawOverrideTags: c.rawOverrideTags,
+      styleName: c.styleName,
+      speakerId: c.speakerId,
+      confidence: c.confidence,
+      needsReview: c.needsReview,
+    };
+  }
+
+  // Initial paint from SSR REST data; Y.Doc takes over once connected.
+  let cues = $state<LiveCue[]>(data.cues.map(restCueToLive));
+  let connectionStatus = $state<"idle" | "connecting" | "connected" | "disconnected">("idle");
   let activeTab = $state<"video" | "waveform" | "cues">("cues");
 
   const ready = $derived(data.episode.status === "ready_for_edit");
   const mediaUrl = $derived(data.episode.audioUrl);
+
+  let provider: HocuspocusProvider | null = null;
+
+  onMount(() => {
+    if (!ready) return;
+
+    const token = readSessionToken();
+    if (!token) {
+      connectionStatus = "disconnected";
+      return;
+    }
+
+    connectionStatus = "connecting";
+
+    provider = new HocuspocusProvider({
+      url: PUBLIC_COLLAB_URL,
+      name: data.episode.id,
+      token,
+      onStatus({ status }) {
+        connectionStatus = status === "connected" ? "connected" : "connecting";
+      },
+      onDisconnect() {
+        connectionStatus = "disconnected";
+      },
+    });
+
+    const refresh = () => {
+      if (provider) cues = liveCuesFromDoc(provider.document);
+    };
+
+    provider.document.getArray(CUES_ARRAY_KEY).observeDeep(refresh);
+    provider.on("synced", refresh);
+
+    return () => {
+      provider?.destroy();
+      provider = null;
+    };
+  });
 </script>
 
 <svelte:head>
@@ -26,6 +92,7 @@
       <button class:active={activeTab === "video"} onclick={() => (activeTab = "video")}>Video</button>
       <button class:active={activeTab === "waveform"} onclick={() => (activeTab = "waveform")}>Waveform</button>
       <button class:active={activeTab === "cues"} onclick={() => (activeTab = "cues")}>Cues</button>
+      <span class="conn">collab: {connectionStatus}</span>
     </nav>
 
     <section class="pane pane-video" class:tab-active={activeTab === "video"}>
@@ -38,14 +105,14 @@
 
     <section class="pane pane-cues" class:tab-active={activeTab === "cues"}>
       <ol class="cue-list">
-        {#each data.cues as cue (cue.id)}
+        {#each cues as cue (cue.id)}
           <li class="cue" class:needs-review={cue.needsReview}>
             <span class="cue-time">{formatMs(cue.startMs)}–{formatMs(cue.endMs)}</span>
             <span class="cue-text">{cue.text}</span>
             {#if cue.needsReview}<span class="badge">review</span>{/if}
           </li>
         {/each}
-        {#if data.cues.length === 0}
+        {#if cues.length === 0}
           <li class="empty">No cues yet.</li>
         {/if}
       </ol>
@@ -74,6 +141,7 @@
     gap: 0.25rem;
     padding: 0.5rem;
     border-bottom: 1px solid #ddd;
+    align-items: center;
   }
   .tabs button {
     padding: 0.35rem 0.75rem;
@@ -82,6 +150,12 @@
   .tabs button.active {
     background: #222;
     color: white;
+  }
+  .conn {
+    margin-left: auto;
+    font-family: ui-monospace, monospace;
+    font-size: 0.8rem;
+    color: #888;
   }
 
   .pane {
@@ -165,6 +239,14 @@
     }
     .pane-waveform {
       border-top: 1px solid #ddd;
+    }
+    .conn {
+      position: fixed;
+      top: 0.25rem;
+      right: 0.5rem;
+      background: rgba(0, 0, 0, 0.05);
+      padding: 0.1rem 0.5rem;
+      border-radius: 4px;
     }
   }
 </style>
