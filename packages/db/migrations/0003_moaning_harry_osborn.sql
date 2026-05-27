@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX "snapshots_episode_label_idx" ON "snapshots" USING btree ("episode_id","label");

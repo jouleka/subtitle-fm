@@ -5,6 +5,7 @@ import {
   timestamp,
   customType,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { episodes } from './episodes';
 import { users } from './users';
@@ -29,5 +30,6 @@ export const snapshots = pgTable(
   },
   (t) => ({
     episodeIdx: index('snapshots_episode_idx').on(t.episodeId, t.createdAt),
+    episodeLabelIdx: uniqueIndex('snapshots_episode_label_idx').on(t.episodeId, t.label),
   }),
 );
