@@ -41,4 +41,9 @@ describe("readSessionToken", () => {
     document.cookie = "better-auth.session_token=abc%2Edef";
     expect(readSessionToken()).toBe("abc.def");
   });
+
+  test("returns null on malformed URL-encoded value (intent: corrupt cookie shouldn't crash mount)", () => {
+    document.cookie = "better-auth.session_token=%E0%A4%A";
+    expect(readSessionToken()).toBeNull();
+  });
 });

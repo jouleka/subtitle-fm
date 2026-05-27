@@ -50,6 +50,10 @@
 
     connectionStatus = "connecting";
 
+    const refresh = () => {
+      if (provider) cues = liveCuesFromDoc(provider.document);
+    };
+
     provider = new HocuspocusProvider({
       url: PUBLIC_COLLAB_URL,
       name: data.episode.id,
@@ -60,14 +64,10 @@
       onDisconnect() {
         connectionStatus = "disconnected";
       },
+      onSynced: refresh,
     });
 
-    const refresh = () => {
-      if (provider) cues = liveCuesFromDoc(provider.document);
-    };
-
     provider.document.getArray(CUES_ARRAY_KEY).observeDeep(refresh);
-    provider.on("synced", refresh);
 
     return () => {
       provider?.destroy();

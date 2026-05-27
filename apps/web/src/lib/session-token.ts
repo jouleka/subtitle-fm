@@ -1,6 +1,7 @@
 /**
  * Extract the Better Auth session token from the document's cookies.
- * Returns null if the cookie isn't present (anonymous).
+ * Returns null if the cookie isn't present (anonymous) or if its value
+ * is a malformed URL-encoded string.
  *
  * The cookie value may be "<token>" or "<token>.<signature>"; we return
  * the entire value and let the collab server split on "." for lookup.
@@ -15,7 +16,11 @@ export function readSessionToken(): string | null {
     const name = trimmed.slice(0, eq);
     const value = trimmed.slice(eq + 1);
     if (name === "better-auth.session_token") {
-      return decodeURIComponent(value);
+      try {
+        return decodeURIComponent(value);
+      } catch {
+        return null;
+      }
     }
   }
   return null;
