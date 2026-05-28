@@ -8,7 +8,6 @@
     type LiveCue,
   } from "@subtitle-fm/shared/yjs";
   import { PUBLIC_COLLAB_URL } from "$env/static/public";
-  import { readSessionToken } from "$lib/session-token";
   import { formatMs } from "$lib/format";
   import type { Cue } from "$lib/types";
 
@@ -42,7 +41,9 @@
   onMount(() => {
     if (!ready) return;
 
-    const token = readSessionToken();
+    // Better Auth cookie is httpOnly — JS can't read it. We get the token
+    // server-side via +layout.server.ts and pass it through SSR payload.
+    const token = data.session?.token;
     if (!token) {
       connectionStatus = "disconnected";
       return;
