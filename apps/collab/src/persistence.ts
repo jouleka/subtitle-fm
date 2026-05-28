@@ -8,6 +8,18 @@ import { hydrateCuesIntoDoc, type CueSeed } from "@subtitle-fm/shared/yjs";
 const LIVE_LABEL = "live";
 
 /**
+ * Stable clientID for the seed hydration. Yjs's Y.Doc defaults to a random
+ * clientID per instance — without pinning, every call to fetchDocumentState
+ * produces ops attributed to a NEW author, so Hocuspocus's applyUpdate
+ * treats repeated hydrations as additional inserts (3 cues become 6, 9, ...).
+ * A fixed clientID makes the encoded bytes deterministic — Yjs sees the same
+ * clientID/clock pair already in the doc state and skips on subsequent applies.
+ * 1 is reserved for "the server seed"; real client connections get random IDs
+ * that won't collide in practice (32-bit space).
+ */
+const SEED_CLIENT_ID = 1;
+
+/**
  * Resolve the Y.Doc bytes for an episode:
  *   1. If a 'live' snapshot exists, return it directly.
  *   2. Otherwise, hydrate a fresh Y.Doc from the cues table and return its encoded state.
@@ -50,6 +62,7 @@ export async function fetchDocumentState(
   }));
 
   const doc = new Y.Doc();
+  doc.clientID = SEED_CLIENT_ID;
   hydrateCuesIntoDoc(doc, seeds);
   return Y.encodeStateAsUpdate(doc);
 }
