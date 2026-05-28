@@ -85,6 +85,7 @@
         subContent: initialAss,
         workerUrl: jassubAssets.workerUrl,
         wasmUrl: jassubAssets.wasmUrl,
+        modernWasmUrl: jassubAssets.modernWasmUrl,
       });
     }
 
@@ -97,9 +98,14 @@
   });
 
   // Re-render JASSUB whenever the cue list changes. The $effect subscribes to
-  // `cues` reactivity; assignments from the Yjs observer (refresh, above) and
-  // from the initial SSR paint both trigger it. The `if (!jassub) return`
-  // guard skips before JASSUB is constructed in onMount.
+  // `cues` reactivity; assignments from the Yjs observer (refresh, above)
+  // trigger it. Svelte 5 flushes onMount and top-level $effect in source
+  // order, so onMount (above) runs FIRST and constructs JASSUB before this
+  // effect fires the first time. The `if (!jassub) return` guard handles the
+  // !ready / missing-token / missing-videoEl cases where onMount early-returns
+  // without constructing JASSUB. Do NOT move this $effect above onMount —
+  // doing so would make the guard short-circuit on first run, and the effect
+  // would never subscribe to `cues`, silently breaking live updates.
   $effect(() => {
     if (!jassub) return;
     jassub.setTrack(serializeAss(defaultParsedAss(cues)));

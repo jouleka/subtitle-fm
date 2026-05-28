@@ -48,7 +48,7 @@ describe("defaultParsedAss", () => {
     expect(doc.cues[0]!.styleName).toBe("Default");
   });
 
-  test("output round-trips through serializeAss without throwing (intent: well-formedness)", () => {
+  test("serializes to ASS text with all three required sections (intent: JASSUB needs Script Info + V4+ Styles + Events)", () => {
     const doc = defaultParsedAss([seed]);
     const text = serializeAss(doc);
     expect(text.startsWith("[Script Info]")).toBe(true);
