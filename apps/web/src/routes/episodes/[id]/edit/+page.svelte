@@ -2,12 +2,16 @@
   import { onMount } from "svelte";
   import type { PageData } from "./$types";
   import { HocuspocusProvider } from "@hocuspocus/provider";
+  import JASSUB from "jassub";
   import {
     CUES_ARRAY_KEY,
     liveCuesFromDoc,
     type LiveCue,
   } from "@subtitle-fm/shared/yjs";
+  import { defaultParsedAss, serializeAss } from "@subtitle-fm/ass";
   import { PUBLIC_COLLAB_URL } from "$env/static/public";
+  import { jassubAssets } from "$lib/jassub-assets";
+  import { exposeDocForDebug } from "$lib/debug-y";
   import { formatMs } from "$lib/format";
   import type { Cue } from "$lib/types";
 
@@ -37,12 +41,12 @@
   const mediaUrl = $derived(data.episode.audioUrl);
 
   let provider: HocuspocusProvider | null = null;
+  let videoEl: HTMLVideoElement | undefined = $state();
+  let jassub: JASSUB | null = null;
 
   onMount(() => {
     if (!ready) return;
 
-    // Better Auth cookie is httpOnly — JS can't read it. We get the token
-    // server-side via +layout.server.ts and pass it through SSR payload.
     const token = data.session?.token;
     if (!token) {
       connectionStatus = "disconnected";
@@ -69,11 +73,36 @@
     });
 
     provider.document.getArray(CUES_ARRAY_KEY).observeDeep(refresh);
+    exposeDocForDebug(provider);
+
+    // JASSUB initialisation. Bound to the rendered <video> element via bind:this.
+    // Subtitles overlay the video's canvas region — even for audio-only sources,
+    // the .pane-video video CSS gives us a min-height JASSUB can draw on.
+    if (videoEl) {
+      const initialAss = serializeAss(defaultParsedAss(cues));
+      jassub = new JASSUB({
+        video: videoEl,
+        subContent: initialAss,
+        workerUrl: jassubAssets.workerUrl,
+        wasmUrl: jassubAssets.wasmUrl,
+      });
+    }
 
     return () => {
+      jassub?.destroy();
+      jassub = null;
       provider?.destroy();
       provider = null;
     };
+  });
+
+  // Re-render JASSUB whenever the cue list changes. The $effect subscribes to
+  // `cues` reactivity; assignments from the Yjs observer (refresh, above) and
+  // from the initial SSR paint both trigger it. The `if (!jassub) return`
+  // guard skips before JASSUB is constructed in onMount.
+  $effect(() => {
+    if (!jassub) return;
+    jassub.setTrack(serializeAss(defaultParsedAss(cues)));
   });
 </script>
 
@@ -98,7 +127,7 @@
 
     <section class="pane pane-video" class:tab-active={activeTab === "video"}>
       {#if mediaUrl}
-        <video controls src={mediaUrl}></video>
+        <video bind:this={videoEl} controls src={mediaUrl}></video>
       {:else}
         <p class="empty">No media URL on this episode.</p>
       {/if}
@@ -179,6 +208,7 @@
   .pane-video video {
     width: 100%;
     max-height: 100%;
+    min-height: 240px;
     background: black;
   }
 
