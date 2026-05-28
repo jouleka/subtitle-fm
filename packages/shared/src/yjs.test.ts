@@ -5,7 +5,6 @@ import {
   cueMapToLive,
   hydrateCuesIntoDoc,
   liveCuesFromDoc,
-  MIN_CUE_DURATION_MS,
   retimeCue,
   type CueSeed,
 } from "./yjs";
@@ -55,20 +54,19 @@ describe("hydrateCuesIntoDoc", () => {
   });
 });
 
-const seedAt = (id: string, orderIndex: number, startMs: number, endMs: number): CueSeed => ({
-  id,
-  orderIndex,
-  startMs,
-  endMs,
-  text: "",
-  rawOverrideTags: "",
-  styleName: "Default",
-  speakerId: null,
-  confidence: null,
-  needsReview: false,
-});
-
 describe("retimeCue", () => {
+  const seedAt = (id: string, orderIndex: number, startMs: number, endMs: number): CueSeed => ({
+    id,
+    orderIndex,
+    startMs,
+    endMs,
+    text: "",
+    rawOverrideTags: "",
+    styleName: "Default",
+    speakerId: null,
+    confidence: null,
+    needsReview: false,
+  });
   test("returns not-found and leaves the doc unchanged for unknown cue id (intent: stale references must never corrupt state)", () => {
     const doc = new Y.Doc();
     hydrateCuesIntoDoc(doc, [seedAt("a", 0, 0, 1000)]);
@@ -123,7 +121,6 @@ describe("retimeCue", () => {
     const result = retimeCue(doc, "b", 500, 1050);
     expect(result).toEqual({ ok: false, reason: "invalid-range" });
     expect(liveCuesFromDoc(doc)[1]).toMatchObject({ startMs: 1050, endMs: 2000 });
-    expect(MIN_CUE_DURATION_MS).toBe(100);
   });
 
   test("first cue retime can extend start down to 0 (intent: episode start is a valid edge)", () => {

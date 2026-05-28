@@ -104,7 +104,7 @@ export type RetimeResult =
  *
  * Assumes cues are stored in orderIndex order in the Y.Array — which
  * hydrateCuesIntoDoc guarantees and the editor never violates without
- * an explicit sort.
+ * an explicit sort. If two entries with the same `id` appear in the array (CRDT-merge edge case), the first match wins and the rest are ignored.
  */
 export function retimeCue(
   doc: Y.Doc,
