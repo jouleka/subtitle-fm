@@ -6,6 +6,7 @@
   import {
     CUES_ARRAY_KEY,
     liveCuesFromDoc,
+    retimeCue,
     type LiveCue,
   } from "@subtitle-fm/shared/yjs";
   import { defaultParsedAss, serializeAss } from "@subtitle-fm/ass";
@@ -13,6 +14,7 @@
   import { jassubAssets } from "$lib/jassub-assets";
   import { exposeDocForDebug } from "$lib/debug-y";
   import { formatMs } from "$lib/format";
+  import { initPeaksController, type PeaksController } from "$lib/peaks-controller";
   import type { Cue } from "$lib/types";
 
   let { data }: { data: PageData } = $props();
@@ -42,7 +44,10 @@
 
   let provider: HocuspocusProvider | null = null;
   let videoEl: HTMLVideoElement | undefined = $state();
+  let overviewEl: HTMLDivElement | undefined = $state();
+  let zoomviewEl: HTMLDivElement | undefined = $state();
   let jassub: JASSUB | null = null;
+  let peaks: PeaksController | null = null;
 
   onMount(() => {
     if (!ready) return;
@@ -89,7 +94,47 @@
       });
     }
 
+    // peaks.js initialisation is async (the controller dynamic-imports peaks.js
+    // to avoid window-at-module-eval). Wrap in an IIFE so onMount keeps returning
+    // its sync cleanup callback; guard against async-init resolving after the user
+    // has navigated away with a `destroyed` flag.
+    let destroyed = false;
+    (async () => {
+      if (!data.episode.peaksUrl) return;
+      if (!videoEl || !overviewEl || !zoomviewEl || !provider) return;
+      const doc = provider.document;
+      try {
+        const instance = await initPeaksController({
+          overviewEl,
+          zoomviewEl,
+          mediaElement: videoEl,
+          peaksUrl: data.episode.peaksUrl,
+          onCueRetime: (cueId, startMs, endMs) => {
+            const result = retimeCue(doc, cueId, startMs, endMs);
+            if (!result.ok) {
+              // Abort: Y.Doc unchanged, observer won't fire, so the dragged
+              // segment would stay at the invalid position. Force a re-render
+              // from current state to snap it back.
+              peaks?.setCues(cues);
+            }
+          },
+        });
+        if (destroyed) {
+          instance.destroy();
+          return;
+        }
+        peaks = instance;
+        peaks.setCues(cues);
+      } catch (err) {
+        // Never crash the editor; the placeholder path keeps the rest usable.
+        console.error("[peaks] init failed", err);
+      }
+    })();
+
     return () => {
+      destroyed = true;
+      peaks?.destroy();
+      peaks = null;
       jassub?.destroy();
       jassub = null;
       provider?.destroy();
@@ -109,6 +154,15 @@
   $effect(() => {
     if (!jassub) return;
     jassub.setTrack(serializeAss(defaultParsedAss(cues)));
+  });
+
+  // Sync cues into peaks.js whenever they change. `peaks` is a plain `let`,
+  // not $state, so a null→instance assignment does not re-trigger this effect.
+  // Initial render is handled by the explicit `peaks.setCues(cues)` inside the
+  // IIFE above; subsequent reactivity flows through `cues` changes.
+  $effect(() => {
+    if (!peaks) return;
+    peaks.setCues(cues);
   });
 </script>
 
@@ -155,7 +209,12 @@
     </section>
 
     <section class="pane pane-waveform" class:tab-active={activeTab === "waveform"}>
-      <p class="placeholder">Waveform — SFM-23</p>
+      {#if data.episode.peaksUrl}
+        <div class="overview" bind:this={overviewEl}></div>
+        <div class="zoomview" bind:this={zoomviewEl}></div>
+      {:else}
+        <p class="placeholder">Waveform not yet generated for this episode.</p>
+      {/if}
     </section>
   </main>
 {/if}
@@ -216,6 +275,16 @@
     max-height: 100%;
     min-height: 240px;
     background: black;
+  }
+
+  .pane-waveform .overview {
+    width: 100%;
+    height: 60px;
+  }
+  .pane-waveform .zoomview {
+    width: 100%;
+    height: 180px;
+    margin-top: 0.5rem;
   }
 
   .cue-list {
