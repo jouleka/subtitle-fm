@@ -9,7 +9,7 @@ const cue = (overrides: Partial<CueInput> & { id: string }): CueInput => ({
 });
 
 describe("diffCueSegments", () => {
-  test("empty current + empty wanted yields empty diff (intent: idempotent on cold start)", () => {
+  test("empty current + empty wanted yields empty diff (intent: the editor can call setCues before any cue is loaded without corrupting peaks state)", () => {
     expect(diffCueSegments([], [])).toEqual({ adds: [], updates: [], removes: [] });
   });
 
@@ -47,7 +47,7 @@ describe("diffCueSegments", () => {
     });
   });
 
-  test("mixed add+update+remove returns all three buckets (intent: one diff handles all transitions in a single render)", () => {
+  test("mixed add+update+remove returns all three buckets (intent: simultaneous Y.Doc edits land in a single setCues call)", () => {
     const diff = diffCueSegments(
       [{ id: "stale" }, { id: "kept" }],
       [

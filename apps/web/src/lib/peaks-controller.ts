@@ -1,6 +1,8 @@
 import type { PeaksInstance, SegmentDragEvent } from "peaks.js";
 import type { LiveCue } from "@subtitle-fm/shared/yjs";
 
+// Matches the cue-list .needs-review border + .badge background in
+// apps/web/src/routes/episodes/[id]/edit/+page.svelte. Keep in sync.
 const NEEDS_REVIEW_COLOR = "#f4b400";
 const DEFAULT_COLOR = "#5e95d6";
 
@@ -11,6 +13,8 @@ export interface CueInput {
   needsReview: boolean;
 }
 
+// peaks.js may emit transient segments without ids during a drag; we only
+// own cue-keyed segments, so id is optional here.
 interface SegmentLike {
   id?: string;
 }
@@ -79,6 +83,9 @@ function cueToUpdate(cue: CueInput): SegmentUpdateProps {
  *
  * Current segments without an id are ignored — peaks.js may emit
  * transient segments during a drag that we don't own.
+ *
+ * Callers must guarantee unique ids in `wanted`; duplicates collapse to
+ * the last entry via Map semantics.
  */
 export function diffCueSegments(current: SegmentLike[], wanted: CueInput[]): CueDiff {
   const wantedById = new Map(wanted.map((c) => [c.id, c]));
