@@ -49,6 +49,13 @@
   let jassub: JASSUB | null = null;
   let peaks: PeaksController | null = null;
 
+  // Exposed to the $effect below so it can retry peaks init when the waveform
+  // tab becomes visible on narrow viewports (peaks.js refuses to init against
+  // zero-dimension containers, which is what `.pane.display:none` produces).
+  // Assigned inside onMount and nulled in cleanup so the effect cannot fire
+  // after teardown.
+  let tryStartPeaks: (() => void) | null = null;
+
   onMount(() => {
     if (!ready) return;
 
@@ -95,48 +102,68 @@
     }
 
     // peaks.js initialisation is async (the controller dynamic-imports peaks.js
-    // to avoid window-at-module-eval). Wrap in an IIFE so onMount keeps returning
-    // its sync cleanup callback; guard against async-init resolving after the user
-    // has navigated away with a `destroyed` flag. Initial render happens at the
-    // end of this IIFE; subsequent cue changes flow through the peaks `$effect`
-    // below.
+    // to avoid window-at-module-eval). On wide viewports (>=1024px) all panes
+    // are visible at mount, so the first call from onMount succeeds. On narrow
+    // viewports the waveform pane is display:none until the user picks its tab;
+    // the $effect below retries when activeTab changes. Initial render happens
+    // inside this IIFE; subsequent cue changes flow through the peaks `$effect`.
     let destroyed = false;
-    (async () => {
+    let peaksInitStarted = false;
+
+    function localTryStartPeaks() {
+      if (destroyed) return;
+      if (peaksInitStarted) return;
+      if (peaks) return;
       if (!data.episode.peaksUrl) return;
       if (!videoEl || !overviewEl || !zoomviewEl || !provider) return;
+      // peaks.js refuses to init against zero-dimension containers.
+      if (zoomviewEl.offsetWidth === 0 || zoomviewEl.offsetHeight === 0) return;
+
+      peaksInitStarted = true;
       const doc = provider.document;
-      try {
-        const instance = await initPeaksController({
-          overviewEl,
-          zoomviewEl,
-          mediaElement: videoEl,
-          peaksUrl: data.episode.peaksUrl,
-          onCueRetime: (cueId, startMs, endMs) => {
-            const result = retimeCue(doc, cueId, startMs, endMs);
-            if (!result.ok) {
-              // Abort: Y.Doc unchanged, observer won't fire, so the dragged
-              // segment would stay at the invalid position. Force a re-render
-              // from current state to snap it back. `cues` is the live $state
-              // binding — reads the current value at call time, not a
-              // mount-time snapshot.
-              peaks?.setCues(cues);
-              // peaks?. (not peaks!.) — cleanup may race with a late dragend.
-            }
-          },
-        });
-        if (destroyed) {
-          instance.destroy();
-          return;
+      const peaksUrl = data.episode.peaksUrl;
+      (async () => {
+        try {
+          const instance = await initPeaksController({
+            overviewEl,
+            zoomviewEl,
+            mediaElement: videoEl,
+            peaksUrl,
+            onCueRetime: (cueId, startMs, endMs) => {
+              const result = retimeCue(doc, cueId, startMs, endMs);
+              if (!result.ok) {
+                // Abort: Y.Doc unchanged, observer won't fire, so the dragged
+                // segment would stay at the invalid position. Force a re-render
+                // from current state to snap it back. `cues` is the live $state
+                // binding — reads the current value at call time, not a
+                // mount-time snapshot.
+                peaks?.setCues(cues);
+                // peaks?. (not peaks!.) — cleanup may race with a late dragend.
+              }
+            },
+          });
+          if (destroyed) {
+            instance.destroy();
+            return;
+          }
+          peaks = instance;
+          peaks.setCues(cues);
+        } catch (err) {
+          // Never crash the editor; the placeholder path keeps the rest usable.
+          // Do NOT reset peaksInitStarted — a failure here is non-transient
+          // (bad .dat, network) and retrying on every tab toggle would loop.
+          console.error("[peaks] init failed", err);
         }
-        peaks = instance;
-        peaks.setCues(cues);
-      } catch (err) {
-        // Never crash the editor; the placeholder path keeps the rest usable.
-        console.error("[peaks] init failed", err);
-      }
-    })();
+      })();
+    }
+
+    tryStartPeaks = localTryStartPeaks;
+    localTryStartPeaks();
 
     return () => {
+      // Null the function reference BEFORE flipping destroyed so the effect
+      // can't fire localTryStartPeaks after teardown.
+      tryStartPeaks = null;
       destroyed = true;
       peaks?.destroy();
       peaks = null;
@@ -164,10 +191,21 @@
   // Sync cues into peaks.js whenever they change. `peaks` is a plain `let`,
   // not $state, so a null→instance assignment does not re-trigger this effect.
   // Initial render is handled by the explicit `peaks.setCues(cues)` inside the
-  // IIFE above; subsequent reactivity flows through `cues` changes.
+  // IIFE in onMount; subsequent reactivity flows through `cues` changes.
   $effect(() => {
     if (!peaks) return;
     peaks.setCues(cues);
+  });
+
+  // Retry peaks init whenever the active tab changes. On narrow viewports
+  // (< 1024px), the waveform pane is display:none until the user picks its tab,
+  // at which point peaks.js can finally see non-zero container dimensions and
+  // initialise. On wide viewports this effect's tryStartPeaks?.() call no-ops
+  // because the onMount inline call already initialised peaks.
+  $effect(() => {
+    // Subscribe to activeTab so this effect re-runs on tab change.
+    activeTab;
+    tryStartPeaks?.();
   });
 </script>
 
