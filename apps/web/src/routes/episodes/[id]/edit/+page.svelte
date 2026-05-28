@@ -97,7 +97,9 @@
     // peaks.js initialisation is async (the controller dynamic-imports peaks.js
     // to avoid window-at-module-eval). Wrap in an IIFE so onMount keeps returning
     // its sync cleanup callback; guard against async-init resolving after the user
-    // has navigated away with a `destroyed` flag.
+    // has navigated away with a `destroyed` flag. Initial render happens at the
+    // end of this IIFE; subsequent cue changes flow through the peaks `$effect`
+    // below.
     let destroyed = false;
     (async () => {
       if (!data.episode.peaksUrl) return;
@@ -114,8 +116,11 @@
             if (!result.ok) {
               // Abort: Y.Doc unchanged, observer won't fire, so the dragged
               // segment would stay at the invalid position. Force a re-render
-              // from current state to snap it back.
+              // from current state to snap it back. `cues` is the live $state
+              // binding — reads the current value at call time, not a
+              // mount-time snapshot.
               peaks?.setCues(cues);
+              // peaks?. (not peaks!.) — cleanup may race with a late dragend.
             }
           },
         });
