@@ -170,24 +170,36 @@ describe("computeTextDiff", () => {
     expect(computeTextDiff("hi", "hi!")).toEqual({ index: 2, deleteCount: 0, insert: "!" });
   });
 
-  test("prepend at the start (intent: inserting before existing text)", () => {
+  test("prepend at the start (intent: a prepend is a real write at index 0, not a no-op)", () => {
     expect(computeTextDiff("hi", "oh hi")).toEqual({ index: 0, deleteCount: 0, insert: "oh " });
   });
 
-  test("mid-string insert (intent: fixing a typo by adding a char)", () => {
+  test("mid-string insert (intent: a one-char insert must not rewrite the whole string)", () => {
     expect(computeTextDiff("helo", "hello")).toEqual({ index: 3, deleteCount: 0, insert: "l" });
   });
 
-  test("mid-string delete (intent: removing a stray char)", () => {
+  test("mid-string delete (intent: a one-char delete must not expand into a full replace)", () => {
     expect(computeTextDiff("hello", "helo")).toEqual({ index: 3, deleteCount: 1, insert: "" });
   });
 
-  test("replace a span (intent: selecting a run and retyping)", () => {
+  test("replace a span (intent: a replaced run is one contiguous op, not delete-all + insert-all)", () => {
     expect(computeTextDiff("hello", "help")).toEqual({ index: 3, deleteCount: 2, insert: "p" });
   });
 
-  test("full clear (intent: select-all then delete)", () => {
+  test("full clear (intent: clearing emits a single delete from index 0 with no insert)", () => {
     expect(computeTextDiff("abc", "")).toEqual({ index: 0, deleteCount: 3, insert: "" });
+  });
+
+  test("inserting a repeated char does not double-count the overlap (intent: the prefix/suffix scans must not both claim the same matching run)", () => {
+    expect(computeTextDiff("aa", "aaa")).toEqual({ index: 2, deleteCount: 0, insert: "a" });
+  });
+
+  test("swapping an emoji keeps whole surrogate pairs in the diff (intent: splitting a pair writes a lone surrogate that corrupts the Y.Text)", () => {
+    expect(computeTextDiff("a\u{1F600}b", "a\u{1F601}b")).toEqual({
+      index: 1,
+      deleteCount: 2,
+      insert: "\u{1F601}",
+    });
   });
 });
 
@@ -253,5 +265,12 @@ describe("applyCueTextEdit", () => {
     applyCueTextEdit(doc, "a", "hi there");
     const after = yArr.get(0)!.get("text");
     expect(after).toBe(before);
+  });
+
+  test("an emoji swap round-trips without surrogate corruption (intent: the editor must not mangle reaction-emoji edits in subtitles)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [seed("a", "a\u{1F600}b")]);
+    applyCueTextEdit(doc, "a", "a\u{1F601}b");
+    expect(liveCuesFromDoc(doc)[0]!.text).toBe("a\u{1F601}b");
   });
 });

@@ -161,11 +161,24 @@ export interface TextDiff {
   insert: string;
 }
 
+function isHighSurrogate(code: number): boolean {
+  return code >= 0xd800 && code <= 0xdbff;
+}
+
+function isLowSurrogate(code: number): boolean {
+  return code >= 0xdc00 && code <= 0xdfff;
+}
+
 /**
  * Minimal single-span diff via common prefix + suffix. Produces the smallest
  * contiguous (delete, insert) that turns oldText into newText — enough for a
  * keystroke-granularity Y.Text edit without rewriting the whole string. A
  * no-op edit returns { index: 0, deleteCount: 0, insert: "" }.
+ *
+ * Boundaries are snapped off surrogate-pair midpoints: JS/Y.Text index by
+ * UTF-16 code unit, so a diff that split a pair (e.g. 😀→😁, which share a
+ * high surrogate) would write a lone surrogate and corrupt the Y.Text. When a
+ * boundary lands mid-pair we back it up so the whole code point is diffed.
  */
 export function computeTextDiff(oldText: string, newText: string): TextDiff {
   if (oldText === newText) return { index: 0, deleteCount: 0, insert: "" };
@@ -174,6 +187,9 @@ export function computeTextDiff(oldText: string, newText: string): TextDiff {
 
   let prefix = 0;
   while (prefix < minLen && oldText[prefix] === newText[prefix]) prefix++;
+  // If the prefix ends just after a high surrogate, its low half is the first
+  // differing unit — back up so the whole pair is inside the diff.
+  if (prefix > 0 && isHighSurrogate(oldText.charCodeAt(prefix - 1))) prefix--;
 
   let suffix = 0;
   while (
@@ -182,6 +198,9 @@ export function computeTextDiff(oldText: string, newText: string): TextDiff {
   ) {
     suffix++;
   }
+  // If the suffix begins on a low surrogate, its high half is the last
+  // differing unit — back up so the whole pair is inside the diff.
+  if (suffix > 0 && isLowSurrogate(oldText.charCodeAt(oldText.length - suffix))) suffix--;
 
   return {
     index: prefix,
