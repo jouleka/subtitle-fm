@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import * as Y from "yjs";
 import {
+  applyCueTextEdit,
+  computeTextDiff,
   CUES_ARRAY_KEY,
   cueMapToLive,
   hydrateCuesIntoDoc,
@@ -156,5 +158,100 @@ describe("retimeCue", () => {
     });
     retimeCue(doc, "b", 2200, 2800);
     expect(observedOrigin).toBe("sfm-23-retime");
+  });
+});
+
+describe("computeTextDiff", () => {
+  test("identical strings yield a no-op diff (intent: a re-render echo must not produce a write)", () => {
+    expect(computeTextDiff("hi", "hi")).toEqual({ index: 0, deleteCount: 0, insert: "" });
+  });
+
+  test("append at the end (intent: typing at the caret is the common case)", () => {
+    expect(computeTextDiff("hi", "hi!")).toEqual({ index: 2, deleteCount: 0, insert: "!" });
+  });
+
+  test("prepend at the start (intent: inserting before existing text)", () => {
+    expect(computeTextDiff("hi", "oh hi")).toEqual({ index: 0, deleteCount: 0, insert: "oh " });
+  });
+
+  test("mid-string insert (intent: fixing a typo by adding a char)", () => {
+    expect(computeTextDiff("helo", "hello")).toEqual({ index: 3, deleteCount: 0, insert: "l" });
+  });
+
+  test("mid-string delete (intent: removing a stray char)", () => {
+    expect(computeTextDiff("hello", "helo")).toEqual({ index: 3, deleteCount: 1, insert: "" });
+  });
+
+  test("replace a span (intent: selecting a run and retyping)", () => {
+    expect(computeTextDiff("hello", "help")).toEqual({ index: 3, deleteCount: 2, insert: "p" });
+  });
+
+  test("full clear (intent: select-all then delete)", () => {
+    expect(computeTextDiff("abc", "")).toEqual({ index: 0, deleteCount: 3, insert: "" });
+  });
+});
+
+describe("applyCueTextEdit", () => {
+  const seed = (id: string, text: string): CueSeed => ({
+    id,
+    orderIndex: 0,
+    startMs: 0,
+    endMs: 1000,
+    text,
+    rawOverrideTags: "",
+    styleName: "Default",
+    speakerId: null,
+    confidence: null,
+    needsReview: false,
+  });
+
+  test("applies a minimal edit to the cue's Y.Text and reflects in liveCuesFromDoc (intent: keystroke autosave is observable)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [seed("a", "helo")]);
+    const changed = applyCueTextEdit(doc, "a", "hello");
+    expect(changed).toBe(true);
+    expect(liveCuesFromDoc(doc)[0]!.text).toBe("hello");
+  });
+
+  test("a no-op edit writes nothing and returns false (intent: own re-render echoes must not churn the doc)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [seed("a", "hello")]);
+    let txnFired = false;
+    doc.on("afterTransaction", (tx: Y.Transaction) => {
+      if (tx.changed.size > 0) txnFired = true;
+    });
+    const changed = applyCueTextEdit(doc, "a", "hello");
+    expect(changed).toBe(false);
+    expect(txnFired).toBe(false);
+  });
+
+  test("an unknown cue id returns false and leaves the doc unchanged (intent: stale ids must never corrupt state)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [seed("a", "hello")]);
+    const before = liveCuesFromDoc(doc);
+    const changed = applyCueTextEdit(doc, "missing", "x");
+    expect(changed).toBe(false);
+    expect(liveCuesFromDoc(doc)).toEqual(before);
+  });
+
+  test("the write transaction is tagged origin 'sfm-24-text' (intent: observers can filter their own echoes)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [seed("a", "")]);
+    let origin: unknown = null;
+    doc.on("afterTransaction", (tx: Y.Transaction) => {
+      if (tx.changed.size > 0 && origin === null) origin = tx.origin;
+    });
+    applyCueTextEdit(doc, "a", "hi");
+    expect(origin).toBe("sfm-24-text");
+  });
+
+  test("mutates the existing Y.Text in place rather than replacing it (intent: preserve the collaborative text object's identity)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [seed("a", "hi")]);
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+    const before = yArr.get(0)!.get("text");
+    applyCueTextEdit(doc, "a", "hi there");
+    const after = yArr.get(0)!.get("text");
+    expect(after).toBe(before);
   });
 });

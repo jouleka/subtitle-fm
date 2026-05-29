@@ -151,3 +151,75 @@ export function retimeCue(
 
   return result;
 }
+
+export interface TextDiff {
+  /** Index in oldText where the change begins. */
+  index: number;
+  /** Number of chars to delete from oldText starting at index. */
+  deleteCount: number;
+  /** String to insert at index (after the deletion). */
+  insert: string;
+}
+
+/**
+ * Minimal single-span diff via common prefix + suffix. Produces the smallest
+ * contiguous (delete, insert) that turns oldText into newText — enough for a
+ * keystroke-granularity Y.Text edit without rewriting the whole string. A
+ * no-op edit returns { index: 0, deleteCount: 0, insert: "" }.
+ */
+export function computeTextDiff(oldText: string, newText: string): TextDiff {
+  if (oldText === newText) return { index: 0, deleteCount: 0, insert: "" };
+
+  const minLen = Math.min(oldText.length, newText.length);
+
+  let prefix = 0;
+  while (prefix < minLen && oldText[prefix] === newText[prefix]) prefix++;
+
+  let suffix = 0;
+  while (
+    suffix < minLen - prefix &&
+    oldText[oldText.length - 1 - suffix] === newText[newText.length - 1 - suffix]
+  ) {
+    suffix++;
+  }
+
+  return {
+    index: prefix,
+    deleteCount: oldText.length - prefix - suffix,
+    insert: newText.slice(prefix, newText.length - suffix),
+  };
+}
+
+/**
+ * Apply a text edit to a cue's Y.Text using the minimal diff, inside one
+ * transaction tagged "sfm-24-text". Returns false (no write) if the cue is
+ * missing or the text is unchanged. Mutates the EXISTING Y.Text in place
+ * (insert/delete) — never replaces it — so collaborative merging is preserved.
+ */
+export function applyCueTextEdit(doc: Y.Doc, cueId: string, newText: string): boolean {
+  let changed = false;
+
+  doc.transact(() => {
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+    let target: Y.Map<unknown> | undefined;
+    for (let i = 0; i < yArr.length; i++) {
+      if ((yArr.get(i)?.get("id") as string | undefined) === cueId) {
+        target = yArr.get(i);
+        break;
+      }
+    }
+    if (!target) return;
+
+    const yText = target.get("text") as Y.Text | undefined;
+    if (!yText) return;
+
+    const diff = computeTextDiff(yText.toString(), newText);
+    if (diff.deleteCount === 0 && diff.insert.length === 0) return;
+
+    if (diff.deleteCount > 0) yText.delete(diff.index, diff.deleteCount);
+    if (diff.insert.length > 0) yText.insert(diff.index, diff.insert);
+    changed = true;
+  }, "sfm-24-text");
+
+  return changed;
+}
