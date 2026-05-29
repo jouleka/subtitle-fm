@@ -7,14 +7,15 @@
     CUES_ARRAY_KEY,
     liveCuesFromDoc,
     retimeCue,
+    applyCueTextEdit,
     type LiveCue,
   } from "@subtitle-fm/shared/yjs";
   import { defaultParsedAss, serializeAss } from "@subtitle-fm/ass";
   import { PUBLIC_COLLAB_URL } from "$env/static/public";
   import { jassubAssets } from "$lib/jassub-assets";
   import { exposeDocForDebug } from "$lib/debug-y";
-  import { formatMs } from "$lib/format";
   import { initPeaksController, type PeaksController } from "$lib/peaks-controller";
+  import CueRow from "$lib/CueRow.svelte";
   import type { Cue } from "$lib/types";
 
   let { data }: { data: PageData } = $props();
@@ -247,11 +248,16 @@
     <section class="pane pane-cues" class:tab-active={activeTab === "cues"}>
       <ol class="cue-list">
         {#each cues as cue (cue.id)}
-          <li class="cue" class:needs-review={cue.needsReview}>
-            <span class="cue-time">{formatMs(cue.startMs)}–{formatMs(cue.endMs)}</span>
-            <span class="cue-text">{cue.text}</span>
-            {#if cue.needsReview}<span class="badge">review</span>{/if}
-          </li>
+          <CueRow
+            {cue}
+            onTextEdit={(id, t) => {
+              if (provider) applyCueTextEdit(provider.document, id, t);
+            }}
+            onRetime={(id, s, e) =>
+              provider
+                ? retimeCue(provider.document, id, s, e)
+                : { ok: false, reason: "not-found" }}
+          />
         {/each}
         {#if cues.length === 0}
           <li class="empty">No cues yet.</li>
@@ -342,32 +348,6 @@
     list-style: none;
     padding: 0;
     margin: 0;
-  }
-  .cue {
-    display: flex;
-    gap: 0.75rem;
-    align-items: baseline;
-    padding: 0.5rem;
-    border-bottom: 1px solid #eee;
-  }
-  .cue.needs-review {
-    border-left: 3px solid #f4b400;
-    padding-left: 0.5rem;
-  }
-  .cue-time {
-    font-family: ui-monospace, monospace;
-    color: #666;
-    min-width: 13ch;
-  }
-  .cue-text {
-    flex: 1;
-  }
-  .badge {
-    background: #f4b400;
-    color: #222;
-    font-size: 0.7rem;
-    padding: 0 0.35rem;
-    border-radius: 4px;
   }
   .placeholder,
   .empty {
