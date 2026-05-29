@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { diffCueSegments, type CueInput } from "./peaks-controller";
+import { diffCueSegments, type CueInput, type SegmentSnapshot } from "./peaks-controller";
 
 const cue = (overrides: Partial<CueInput> & { id: string }): CueInput => ({
   startMs: 0,
@@ -8,15 +8,23 @@ const cue = (overrides: Partial<CueInput> & { id: string }): CueInput => ({
   ...overrides,
 });
 
+// A peaks.js segment snapshot whose rendered props exactly match a cue —
+// i.e. the segment is already drawn correctly for that cue.
+const segFor = (c: CueInput): SegmentSnapshot => ({
+  id: c.id,
+  startTime: c.startMs / 1000,
+  endTime: c.endMs / 1000,
+  color: c.needsReview ? "#f4b400" : "#5e95d6",
+});
+
 describe("diffCueSegments", () => {
   test("empty current + empty wanted yields empty diff (intent: the editor can call setCues before any cue is loaded without corrupting peaks state)", () => {
-    expect(diffCueSegments([], [])).toEqual({ adds: [], updates: [], removes: [] });
+    expect(diffCueSegments([], [])).toEqual({ adds: [], removes: [] });
   });
 
   test("adds a segment for each wanted cue not already present (intent: new Y.Doc cues materialize on the waveform)", () => {
     const diff = diffCueSegments([], [cue({ id: "a", startMs: 0, endMs: 1000 })]);
     expect(diff.removes).toEqual([]);
-    expect(diff.updates).toEqual([]);
     expect(diff.adds).toHaveLength(1);
     expect(diff.adds[0]).toMatchObject({
       id: "a",
@@ -27,53 +35,57 @@ describe("diffCueSegments", () => {
     });
   });
 
+  test("leaves an unchanged segment untouched (intent: setCues is idempotent so re-renders don't flicker every segment)", () => {
+    const c = cue({ id: "a", startMs: 500, endMs: 1500 });
+    const diff = diffCueSegments([segFor(c)], [c]);
+    expect(diff).toEqual({ adds: [], removes: [] });
+  });
+
   test("removes segments whose cue ids are gone from the wanted list (intent: deleted cues drop from the waveform)", () => {
-    const diff = diffCueSegments(
-      [{ id: "a" }, { id: "b" }],
-      [cue({ id: "a" })],
-    );
+    const a = cue({ id: "a" });
+    const b = cue({ id: "b" });
+    const diff = diffCueSegments([segFor(a), segFor(b)], [a]);
     expect(diff.removes).toEqual(["b"]);
     expect(diff.adds).toEqual([]);
-    expect(diff.updates).toHaveLength(1);
-    expect(diff.updates[0]!.id).toBe("a");
   });
 
-  test("emits an update for each cue still present (intent: Y.Doc field changes propagate to peaks)", () => {
-    const diff = diffCueSegments([{ id: "a" }], [cue({ id: "a", startMs: 500, endMs: 1500 })]);
-    expect(diff.updates).toHaveLength(1);
-    expect(diff.updates[0]).toEqual({
-      id: "a",
-      props: { startTime: 0.5, endTime: 1.5, color: "#5e95d6" },
-    });
+  test("a retimed cue is removed and re-added, not updated (intent: peaks.js Segment.update mutates data but never repaints, so we force a structural redraw)", () => {
+    const before = segFor(cue({ id: "a", startMs: 0, endMs: 1000 }));
+    const after = cue({ id: "a", startMs: 0, endMs: 2000 });
+    const diff = diffCueSegments([before], [after]);
+    expect(diff.removes).toEqual(["a"]);
+    expect(diff.adds).toHaveLength(1);
+    expect(diff.adds[0]).toMatchObject({ id: "a", startTime: 0, endTime: 2 });
   });
 
-  test("mixed add+update+remove returns all three buckets (intent: simultaneous Y.Doc edits land in a single setCues call)", () => {
+  test("a needsReview toggle is removed and re-added with the new colour (intent: the review-flag colour change must actually repaint, mirroring the cue-list badge)", () => {
+    const before = segFor(cue({ id: "a", needsReview: false }));
+    const after = cue({ id: "a", needsReview: true });
+    const diff = diffCueSegments([before], [after]);
+    expect(diff.removes).toEqual(["a"]);
+    expect(diff.adds).toHaveLength(1);
+    expect(diff.adds[0]!.color).toBe("#f4b400");
+  });
+
+  test("mixed new+changed+stale+unchanged routes each cue correctly (intent: one diff handles all transitions from a single setCues call)", () => {
+    const kept = cue({ id: "kept", startMs: 0, endMs: 1000 });
+    const changed = cue({ id: "changed", startMs: 0, endMs: 1000 });
     const diff = diffCueSegments(
-      [{ id: "stale" }, { id: "kept" }],
+      [segFor(kept), segFor(changed), segFor(cue({ id: "stale" }))],
       [
-        cue({ id: "kept", startMs: 0, endMs: 1000 }),
-        cue({ id: "fresh", startMs: 2000, endMs: 3000 }),
+        kept, // unchanged → untouched
+        cue({ id: "changed", startMs: 0, endMs: 2500 }), // retimed → remove+add
+        cue({ id: "fresh", startMs: 3000, endMs: 4000 }), // new → add
       ],
     );
-    expect(diff.removes).toEqual(["stale"]);
-    expect(diff.adds).toHaveLength(1);
-    expect(diff.adds[0]!.id).toBe("fresh");
-    expect(diff.updates).toHaveLength(1);
-    expect(diff.updates[0]!.id).toBe("kept");
+    expect(diff.removes.sort()).toEqual(["changed", "stale"]);
+    expect(diff.adds.map((a) => a.id).sort()).toEqual(["changed", "fresh"]);
   });
 
-  test("needsReview=true colours the segment yellow on both add and update (intent: waveform mirrors the cue-list review badge)", () => {
-    const addDiff = diffCueSegments([], [cue({ id: "a", needsReview: true })]);
-    expect(addDiff.adds[0]!.color).toBe("#f4b400");
-
-    const updateDiff = diffCueSegments([{ id: "a" }], [cue({ id: "a", needsReview: true })]);
-    expect(updateDiff.updates[0]!.props.color).toBe("#f4b400");
-  });
-
-  test("ignores current segments without an id (intent: peaks.js may produce intermediate segments during a drag; we only own cue-keyed ones)", () => {
-    const diff = diffCueSegments([{ id: undefined }, { id: "a" }], [cue({ id: "a" })]);
+  test("ignores current segments without an id (intent: peaks.js may produce transient id-less segments mid-drag that we don't own)", () => {
+    const a = cue({ id: "a" });
+    const diff = diffCueSegments([{ id: undefined }, segFor(a)], [a]);
     expect(diff.removes).toEqual([]);
     expect(diff.adds).toEqual([]);
-    expect(diff.updates).toHaveLength(1);
   });
 });

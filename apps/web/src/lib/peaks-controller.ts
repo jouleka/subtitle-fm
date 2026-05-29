@@ -1,4 +1,4 @@
-import type { PeaksInstance, SegmentDragEvent } from "peaks.js";
+import type { PeaksInstance, SegmentDragEvent, SegmentOptions } from "peaks.js";
 import type { LiveCue } from "@subtitle-fm/shared/yjs";
 
 // Matches the cue-list .needs-review border + .badge background in
@@ -13,10 +13,15 @@ export interface CueInput {
   needsReview: boolean;
 }
 
-// peaks.js may emit transient segments without ids during a drag; we only
-// own cue-keyed segments, so id is optional here.
-interface SegmentLike {
+// Snapshot of a peaks.js segment's rendered props, used to diff against the
+// wanted cues. peaks.js may emit transient segments without ids during a
+// drag; those are ignored (we only own cue-keyed segments). startTime/endTime
+// are in seconds (peaks.js's native unit).
+export interface SegmentSnapshot {
   id?: string;
+  startTime?: number;
+  endTime?: number;
+  color?: string;
 }
 
 export interface SegmentAddInput {
@@ -28,15 +33,8 @@ export interface SegmentAddInput {
   labelText: string;
 }
 
-export interface SegmentUpdateProps {
-  startTime: number;
-  endTime: number;
-  color: string;
-}
-
 export interface CueDiff {
   adds: SegmentAddInput[];
-  updates: { id: string; props: SegmentUpdateProps }[];
   removes: string[];
 }
 
@@ -68,12 +66,14 @@ function cueToAdd(cue: CueInput): SegmentAddInput {
   };
 }
 
-function cueToUpdate(cue: CueInput): SegmentUpdateProps {
-  return {
-    startTime: cue.startMs / 1000,
-    endTime: cue.endMs / 1000,
-    color: cueColor(cue.needsReview),
-  };
+// True when the rendered segment no longer matches the cue. Compared in
+// integer milliseconds to dodge float drift from the seconds round-trip.
+function segmentDiffers(seg: SegmentSnapshot, cue: CueInput): boolean {
+  return (
+    Math.round((seg.startTime ?? -1) * 1000) !== cue.startMs ||
+    Math.round((seg.endTime ?? -1) * 1000) !== cue.endMs ||
+    seg.color !== cueColor(cue.needsReview)
+  );
 }
 
 /**
@@ -81,34 +81,37 @@ function cueToUpdate(cue: CueInput): SegmentUpdateProps {
  * editor wants displayed. Exported so unit tests can exercise it against
  * plain objects without instantiating a real Peaks instance.
  *
- * Current segments without an id are ignored — peaks.js may emit
- * transient segments during a drag that we don't own.
+ * Changed segments are emitted as a remove + a re-add rather than an update:
+ * peaks.js v3's Segment.update() mutates the segment's data but does not
+ * repaint the rendered shape (its waveform sceneFunc isn't re-run by Konva's
+ * autoDraw on a plain attribute change). A remove + add is a structural
+ * change Konva does honour, so the new colour / position actually paints.
+ * Unchanged segments are left untouched so re-renders don't flicker.
  *
- * Callers must guarantee unique ids in `wanted`; duplicates collapse to
- * the last entry via Map semantics.
+ * Current segments without an id are ignored (transient drag segments).
+ * Callers must guarantee unique ids in `wanted`; duplicates collapse to the
+ * last entry via Map semantics.
  */
-export function diffCueSegments(current: SegmentLike[], wanted: CueInput[]): CueDiff {
+export function diffCueSegments(current: SegmentSnapshot[], wanted: CueInput[]): CueDiff {
+  const currentById = new Map<string, SegmentSnapshot>();
+  for (const seg of current) {
+    if (typeof seg.id === "string") currentById.set(seg.id, seg);
+  }
   const wantedById = new Map(wanted.map((c) => [c.id, c]));
-  const currentIds = new Set(
-    current.map((s) => s.id).filter((id): id is string => typeof id === "string"),
-  );
 
   const removes: string[] = [];
-  for (const id of currentIds) {
-    if (!wantedById.has(id)) removes.push(id);
+  for (const [id, seg] of currentById) {
+    const cue = wantedById.get(id);
+    if (!cue || segmentDiffers(seg, cue)) removes.push(id);
   }
 
   const adds: SegmentAddInput[] = [];
-  const updates: { id: string; props: SegmentUpdateProps }[] = [];
   for (const cue of wanted) {
-    if (currentIds.has(cue.id)) {
-      updates.push({ id: cue.id, props: cueToUpdate(cue) });
-    } else {
-      adds.push(cueToAdd(cue));
-    }
+    const seg = currentById.get(cue.id);
+    if (!seg || segmentDiffers(seg, cue)) adds.push(cueToAdd(cue));
   }
 
-  return { adds, updates, removes };
+  return { adds, removes };
 }
 
 /**
@@ -149,7 +152,14 @@ export async function initPeaksController(
   });
 
   function setCues(cues: LiveCue[]): void {
-    const current = peaks.segments.getSegments() as SegmentLike[];
+    const current: SegmentSnapshot[] = peaks.segments.getSegments().map((s) => ({
+      id: s.id,
+      startTime: s.startTime,
+      endTime: s.endTime,
+      // We only ever set string colours; a non-string (gradient) reads as
+      // undefined, which segmentDiffers treats as changed → safe re-add.
+      color: typeof s.color === "string" ? s.color : undefined,
+    }));
     const wanted: CueInput[] = cues.map((c) => ({
       id: c.id,
       startMs: c.startMs,
@@ -159,11 +169,7 @@ export async function initPeaksController(
     const diff = diffCueSegments(current, wanted);
 
     for (const id of diff.removes) peaks.segments.removeById(id);
-    for (const add of diff.adds) peaks.segments.add(add as import("peaks.js").SegmentOptions);
-    for (const { id, props } of diff.updates) {
-      const seg = peaks.segments.getSegment(id);
-      seg?.update(props as import("peaks.js").SegmentOptions);
-    }
+    for (const add of diff.adds) peaks.segments.add(add as SegmentOptions);
   }
 
   return {
