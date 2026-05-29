@@ -25,8 +25,9 @@
   // it. A focused field is the user's — clobbering its value resets the caret.
   // These read cue.* so they re-run on every Y.Doc change.
   $effect(() => {
-    if (textEl && document.activeElement !== textEl && textEl.value !== cue.text) {
-      textEl.value = cue.text;
+    const text = cue.text; // read unconditionally so the effect subscribes to cue.text
+    if (textEl && document.activeElement !== textEl && textEl.value !== text) {
+      textEl.value = text;
     }
   });
   $effect(() => {
@@ -101,7 +102,7 @@
       bind:this={startEl}
       onblur={commitStart}
       onkeydown={(e) => onTimeKeydown(e, "start")}
-      aria-label="cue start"
+      aria-label={`cue ${cue.orderIndex + 1} start`}
     />
     <span class="dash">–</span>
     <input
@@ -109,7 +110,7 @@
       bind:this={endEl}
       onblur={commitEnd}
       onkeydown={(e) => onTimeKeydown(e, "end")}
-      aria-label="cue end"
+      aria-label={`cue ${cue.orderIndex + 1} end`}
     />
   </span>
   <textarea
@@ -119,7 +120,7 @@
     oncompositionstart={() => (composing = true)}
     oncompositionend={handleCompositionEnd}
     rows="1"
-    aria-label="cue text"
+    aria-label={`cue ${cue.orderIndex + 1} text`}
   ></textarea>
   {#if cue.needsReview}<span class="badge">review</span>{/if}
 </li>
