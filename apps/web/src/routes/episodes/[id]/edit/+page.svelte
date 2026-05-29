@@ -47,7 +47,14 @@
   let overviewEl: HTMLDivElement | undefined = $state();
   let zoomviewEl: HTMLDivElement | undefined = $state();
   let jassub: JASSUB | null = null;
-  let peaks: PeaksController | null = null;
+  // $state (not a plain let): peaks is assigned asynchronously inside the
+  // onMount IIFE, AFTER the cues $effect below has already run its first pass.
+  // If peaks were a plain let, that first pass would hit `if (!peaks) return`
+  // before reading `cues`, so the effect would never subscribe to cues and
+  // live updates (cross-tab retime, needsReview colour) would silently stop.
+  // As $state, the null→instance assignment re-triggers the effect; on the
+  // re-run peaks is non-null, cues is read, and the subscription is established.
+  let peaks = $state<PeaksController | null>(null);
 
   // Exposed to the $effect below so it can retry peaks init when the waveform
   // tab becomes visible on narrow viewports (peaks.js refuses to init against
@@ -188,10 +195,11 @@
     jassub.setTrack(serializeAss(defaultParsedAss(cues)));
   });
 
-  // Sync cues into peaks.js whenever they change. `peaks` is a plain `let`,
-  // not $state, so a null→instance assignment does not re-trigger this effect.
-  // Initial render is handled by the explicit `peaks.setCues(cues)` inside the
-  // IIFE in onMount; subsequent reactivity flows through `cues` changes.
+  // Sync cues into peaks.js. Re-runs when `peaks` flips null→instance (it's
+  // $state) and on every `cues` change. The first pass (peaks still null,
+  // before the async init resolves) reads `peaks`, returns early, and crucially
+  // subscribes to `peaks`; the re-run after init reads `cues` and establishes
+  // that subscription too, so all later cue edits reach the waveform.
   $effect(() => {
     if (!peaks) return;
     peaks.setCues(cues);
