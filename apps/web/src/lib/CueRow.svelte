@@ -2,6 +2,7 @@
   import type { LiveCue, RetimeResult } from "@subtitle-fm/shared/yjs";
   import type { PresenceUser } from "$lib/presence";
   import { formatMs, parseTimecode } from "$lib/format";
+  import { segmentOverrideTags } from "$lib/override-tags";
 
   let {
     cue,
@@ -20,11 +21,34 @@
   let textEl: HTMLTextAreaElement | undefined = $state();
   let startEl: HTMLInputElement | undefined = $state();
   let endEl: HTMLInputElement | undefined = $state();
+  let highlightEl: HTMLDivElement | undefined = $state();
 
   // IME composition guard. The source language is Japanese — CJK input fires
   // `input` events mid-composition with partial text; applying a diff then
   // would corrupt the Y.Text. Suppress during composition, flush on end.
   let composing = false;
+
+  // Backdrop mirror of the textarea's *visible* value. MUST be $state (assigned
+  // reactively; the backdrop {#each} must re-render on change). highlightText
+  // runs ahead of cue.text while the field is focused, until the Y.Doc
+  // round-trips back through the sync effect below.
+  let highlightText = $state(cue.text);
+  const segments = $derived(segmentOverrideTags(highlightText));
+
+  // SINGLE programmatic writer of the textarea value — also updates the mirror,
+  // so the transparent textarea and the backdrop that paints its text can never
+  // desync. Any future imperative `textEl.value =` write MUST go through here.
+  function showText(v: string) {
+    if (textEl) textEl.value = v;
+    highlightText = v;
+  }
+
+  function syncScroll() {
+    if (textEl && highlightEl) {
+      highlightEl.scrollTop = textEl.scrollTop;
+      highlightEl.scrollLeft = textEl.scrollLeft;
+    }
+  }
 
   // Sync external/remote values into a field ONLY when the user isn't editing
   // it. A focused field is the user's — clobbering its value resets the caret.
@@ -32,7 +56,7 @@
   $effect(() => {
     const text = cue.text; // read unconditionally so the effect subscribes to cue.text
     if (textEl && document.activeElement !== textEl && textEl.value !== text) {
-      textEl.value = text;
+      showText(text); // sets textEl.value AND highlightText (the only programmatic writer)
     }
   });
   $effect(() => {
@@ -49,13 +73,17 @@
   });
 
   function handleTextInput() {
+    if (textEl) highlightText = textEl.value; // mirror the visible value, always
     if (composing) return;
     if (textEl) onTextEdit(cue.id, textEl.value);
   }
 
   function handleCompositionEnd() {
     composing = false;
-    if (textEl) onTextEdit(cue.id, textEl.value);
+    if (textEl) {
+      highlightText = textEl.value;
+      onTextEdit(cue.id, textEl.value);
+    }
   }
 
   function commitStart() {
@@ -124,15 +152,19 @@
       aria-label={`cue ${cue.orderIndex + 1} end`}
     />
   </span>
-  <textarea
-    class="cue-text"
-    bind:this={textEl}
-    oninput={handleTextInput}
-    oncompositionstart={() => (composing = true)}
-    oncompositionend={handleCompositionEnd}
-    rows="1"
-    aria-label={`cue ${cue.orderIndex + 1} text`}
-  ></textarea>
+  <div class="cue-text-wrap">
+    <div class="cue-text-highlight" bind:this={highlightEl} aria-hidden="true">{#each segments as seg}<span class:tag={seg.kind === "tag"}>{seg.value}</span>{/each}</div>
+    <textarea
+      class="cue-text"
+      bind:this={textEl}
+      oninput={handleTextInput}
+      oncompositionstart={() => (composing = true)}
+      oncompositionend={handleCompositionEnd}
+      onscroll={syncScroll}
+      rows="1"
+      aria-label={`cue ${cue.orderIndex + 1} text`}
+    ></textarea>
+  </div>
   {#if cue.needsReview}<span class="badge">review</span>{/if}
   {#if remoteUsers.length > 0}
     <span class="remote-labels">
@@ -171,13 +203,51 @@
   .dash {
     color: #666;
   }
-  .cue-text {
+  .cue-text-wrap {
+    position: relative;
     flex: 1;
+  }
+  /* Backdrop and textarea MUST share an identical text box so glyphs line up. */
+  .cue-text-highlight,
+  .cue-text {
     font: inherit;
-    resize: vertical;
+    line-height: 1.5;
+    tab-size: 2;
     min-height: 1.6rem;
     padding: 0.2rem 0.3rem;
-    border: 1px solid #ddd;
+    border: 1px solid transparent;
+    border-radius: 3px;
+    box-sizing: border-box;
+    white-space: pre-wrap;
+    overflow-wrap: break-word;
+    width: 100%;
+  }
+  .cue-text-highlight {
+    position: absolute;
+    inset: 0;
+    margin: 0;
+    overflow: hidden;
+    pointer-events: none;
+    color: #222;
+    user-select: none;
+  }
+  .cue-text {
+    position: relative;
+    margin: 0;
+    background: transparent;
+    color: transparent;
+    caret-color: #222;
+    border-color: #ddd;
+    resize: vertical;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  .cue-text::-webkit-scrollbar {
+    display: none;
+  }
+  .cue-text-highlight .tag {
+    background: #eef2ff;
+    color: #3730a3;
     border-radius: 3px;
   }
   .badge {
