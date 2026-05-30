@@ -6,6 +6,7 @@ import { episodes } from './routes/episodes';
 import { shows } from './routes/shows';
 import { uploads } from './routes/uploads';
 import { webhooksRunpod } from './routes/webhooks-runpod';
+import { glossary } from './routes/glossary';
 import { auth } from './lib/auth';
 import { attachSession, type AuthVariables } from './lib/session';
 import { log } from './lib/log';
@@ -35,6 +36,7 @@ app.use('*', attachSession);
 
 app.route('/health', health);
 app.route('/shows', shows);
+app.route('/shows/:showId/glossary', glossary);
 app.route('/episodes', episodes);
 app.route('/uploads', uploads);
 app.route('/webhooks/runpod', webhooksRunpod);
