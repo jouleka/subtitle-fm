@@ -31,7 +31,9 @@
   // Backdrop mirror of the textarea's *visible* value. MUST be $state (assigned
   // reactively; the backdrop {#each} must re-render on change). highlightText
   // runs ahead of cue.text while the field is focused, until the Y.Doc
-  // round-trips back through the sync effect below.
+  // round-trips back through the sync effect below. Seeding from cue.text reads
+  // it once (Svelte's state_referenced_locally warning is expected/benign) — the
+  // sync $effect + handlers keep it current after mount.
   let highlightText = $state(cue.text);
   const segments = $derived(segmentOverrideTags(highlightText));
 
@@ -153,6 +155,9 @@
     />
   </span>
   <div class="cue-text-wrap">
+    <!-- The backdrop paints the cue text; the {#each} below MUST stay on a single
+         line with no whitespace between the spans. This div is white-space:pre-wrap,
+         so any stray template whitespace would render as glyphs and break alignment. -->
     <div class="cue-text-highlight" bind:this={highlightEl} aria-hidden="true">{#each segments as seg}<span class:tag={seg.kind === "tag"}>{seg.value}</span>{/each}</div>
     <textarea
       class="cue-text"
@@ -239,6 +244,7 @@
     caret-color: #222;
     border-color: #ddd;
     resize: vertical;
+    overflow-x: hidden;        /* break-word prevents h-scroll anyway; guards the backdrop (overflow:hidden) from a scrollLeft mismatch */
     overflow-y: auto;
     scrollbar-width: none;
   }
