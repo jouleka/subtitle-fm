@@ -17,6 +17,7 @@
   import { initPeaksController, type PeaksController } from "$lib/peaks-controller";
   import CueRow from "$lib/CueRow.svelte";
   import PresenceRoster from "$lib/PresenceRoster.svelte";
+  import GlossaryPanel from "$lib/GlossaryPanel.svelte";
   import { userColor, derivePresence, type PresenceUser, type PresenceState } from "$lib/presence";
   import type { Cue } from "$lib/types";
 
@@ -41,10 +42,24 @@
     provider?.awareness?.setLocalStateField("focusedCueId", id);
   }
 
+  // Click-to-fill: insert a glossary term's translation at the focused cue's
+  // caret. Reuses the SFM-24 edit path — setRangeText mutates the textarea and
+  // the synthetic 'input' event drives CueRow.handleTextInput -> onTextEdit ->
+  // applyCueTextEdit. No-op if no cue textarea is focused. (The panel button's
+  // onmousedown preventDefault keeps that textarea focused through the click.)
+  function insertTerm(targetText: string) {
+    const el = document.activeElement;
+    if (!(el instanceof HTMLTextAreaElement) || !el.classList.contains("cue-text")) return;
+    const start = el.selectionStart ?? el.value.length;
+    const end = el.selectionEnd ?? start;
+    el.setRangeText(targetText, start, end, "end");
+    el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   // Initial paint from SSR REST data; Y.Doc takes over once connected.
   let cues = $state<LiveCue[]>(data.cues.map(restCueToLive));
   let connectionStatus = $state<"idle" | "connecting" | "connected" | "disconnected">("idle");
-  let activeTab = $state<"video" | "waveform" | "cues">("cues");
+  let activeTab = $state<"video" | "waveform" | "cues" | "glossary">("cues");
   let roster = $state<PresenceUser[]>([]);
   let presenceByCue = $state<Map<string, PresenceUser[]>>(new Map());
 
@@ -269,6 +284,7 @@
       <button class:active={activeTab === "video"} onclick={() => (activeTab = "video")}>Video</button>
       <button class:active={activeTab === "waveform"} onclick={() => (activeTab = "waveform")}>Waveform</button>
       <button class:active={activeTab === "cues"} onclick={() => (activeTab = "cues")}>Cues</button>
+      <button class:active={activeTab === "glossary"} onclick={() => (activeTab = "glossary")}>Glossary</button>
       <span class="conn">collab: {connectionStatus}</span>
     </nav>
 
@@ -318,6 +334,9 @@
         <p class="placeholder">Waveform not yet generated for this episode.</p>
       {/if}
     </section>
+    <section class="pane pane-glossary" class:tab-active={activeTab === "glossary"}>
+      <GlossaryPanel terms={data.glossaryTerms} onInsert={insertTerm} />
+    </section>
   </main>
 {/if}
 
@@ -328,7 +347,8 @@
       "tabs"
       "video"
       "cues"
-      "waveform";
+      "waveform"
+      "glossary";
     min-height: 100dvh;
   }
 
@@ -372,6 +392,9 @@
   .pane-waveform {
     grid-area: waveform;
   }
+  .pane-glossary {
+    grid-area: glossary;
+  }
   .pane-video video {
     width: 100%;
     max-height: 100%;
@@ -407,11 +430,11 @@
 
   @media (min-width: 1024px) {
     .editor {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 320px);
       grid-template-rows: 1fr auto;
       grid-template-areas:
-        "video cues"
-        "waveform waveform";
+        "video cues glossary"
+        "waveform waveform glossary";
     }
     .tabs {
       display: none;
