@@ -29,4 +29,9 @@ describe("UpdateGlossaryTerm", () => {
   test("rejects empty targetText (intent: cannot blank out a translation)", () => {
     expect(UpdateGlossaryTerm.safeParse({ targetText: "" }).success).toBe(false);
   });
+  test("strips sourceText (intent: source text is the immutable lookup key, not PATCH-able)", () => {
+    const r = UpdateGlossaryTerm.safeParse({ sourceText: "x", targetText: "y" });
+    expect(r.success).toBe(true);
+    expect(r.success && "sourceText" in r.data).toBe(false);
+  });
 });

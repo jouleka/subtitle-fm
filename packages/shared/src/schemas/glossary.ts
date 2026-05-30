@@ -27,5 +27,7 @@ export const UpdateGlossaryTerm = z
     kind: GlossaryTermKind.optional(),
     notes: z.string().nullable().optional(),
   })
+  // Bodies come from JSON.parse (no `undefined` values), so Object.keys reliably
+  // counts only present keys; an empty {} is rejected → 400 (never a Drizzle .set({})).
   .refine((v) => Object.keys(v).length > 0, { message: "at least one field required" });
 export type UpdateGlossaryTerm = z.infer<typeof UpdateGlossaryTerm>;
