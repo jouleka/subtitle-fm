@@ -1,15 +1,20 @@
 <script lang="ts">
   import type { LiveCue, RetimeResult } from "@subtitle-fm/shared/yjs";
+  import type { PresenceUser } from "$lib/presence";
   import { formatMs, parseTimecode } from "$lib/format";
 
   let {
     cue,
     onTextEdit,
     onRetime,
+    remoteUsers = [],
+    onFocusCue,
   }: {
     cue: LiveCue;
     onTextEdit: (id: string, newText: string) => void;
     onRetime: (id: string, startMs: number, endMs: number) => RetimeResult;
+    remoteUsers?: PresenceUser[];
+    onFocusCue: (id: string) => void;
   } = $props();
 
   let textEl: HTMLTextAreaElement | undefined = $state();
@@ -95,7 +100,13 @@
   }
 </script>
 
-<li class="cue" class:needs-review={cue.needsReview}>
+<li
+  class="cue"
+  class:needs-review={cue.needsReview}
+  class:remote-focused={remoteUsers.length > 0}
+  style:--remote-color={remoteUsers[0]?.color ?? "transparent"}
+  onfocusin={() => onFocusCue(cue.id)}
+>
   <span class="cue-times">
     <input
       class="tc"
@@ -123,6 +134,13 @@
     aria-label={`cue ${cue.orderIndex + 1} text`}
   ></textarea>
   {#if cue.needsReview}<span class="badge">review</span>{/if}
+  {#if remoteUsers.length > 0}
+    <span class="remote-labels">
+      {#each remoteUsers as u (u.id)}
+        <span class="remote-chip" style:background={u.color}>{u.name}</span>
+      {/each}
+    </span>
+  {/if}
 </li>
 
 <style>
@@ -169,5 +187,22 @@
     padding: 0 0.35rem;
     border-radius: 4px;
     align-self: center;
+  }
+  .cue.remote-focused {
+    outline: 2px solid var(--remote-color);
+    outline-offset: -2px;
+  }
+  .remote-labels {
+    display: inline-flex;
+    gap: 0.25rem;
+    align-self: center;
+    flex-wrap: wrap;
+  }
+  .remote-chip {
+    font-size: 0.65rem;
+    padding: 0 0.35rem;
+    border-radius: 999px;
+    color: white;
+    white-space: nowrap;
   }
 </style>
