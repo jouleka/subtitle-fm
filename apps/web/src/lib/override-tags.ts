@@ -1,5 +1,7 @@
 export type Segment = { kind: "text" | "tag"; value: string };
 
+// Matches any closed brace group — no backslash required. This is display-only,
+// not a semantic ASS parser, so every closed `{...}` group is treated as opaque.
 const TAG_RE = /\{[^}]*\}/g;
 
 /**

@@ -40,7 +40,7 @@ describe("segmentOverrideTags", () => {
     ]);
   });
 
-  test("an empty brace group {} is still a tag (a well-formed group, even empty, is opaque)", () => {
+  test("an empty brace group {} is treated as a tag segment (the function does not filter empty groups)", () => {
     expect(segmentOverrideTags("a{}b")).toEqual([
       { kind: "text", value: "a" },
       { kind: "tag", value: "{}" },
