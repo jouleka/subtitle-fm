@@ -12,3 +12,20 @@ export const GlossaryTerm = z.object({
   notes: z.string().nullable(),
 });
 export type GlossaryTerm = z.infer<typeof GlossaryTerm>;
+
+export const CreateGlossaryTerm = z.object({
+  sourceText: z.string().min(1),
+  targetText: z.string().min(1),
+  kind: GlossaryTermKind,
+  notes: z.string().nullable().optional(),
+});
+export type CreateGlossaryTerm = z.infer<typeof CreateGlossaryTerm>;
+
+export const UpdateGlossaryTerm = z
+  .object({
+    targetText: z.string().min(1).optional(),
+    kind: GlossaryTermKind.optional(),
+    notes: z.string().nullable().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: "at least one field required" });
+export type UpdateGlossaryTerm = z.infer<typeof UpdateGlossaryTerm>;
