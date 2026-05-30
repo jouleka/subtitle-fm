@@ -16,6 +16,8 @@
   import { exposeDocForDebug } from "$lib/debug-y";
   import { initPeaksController, type PeaksController } from "$lib/peaks-controller";
   import CueRow from "$lib/CueRow.svelte";
+  import PresenceRoster from "$lib/PresenceRoster.svelte";
+  import { userColor, derivePresence, type PresenceUser, type PresenceState } from "$lib/presence";
   import type { Cue } from "$lib/types";
 
   let { data }: { data: PageData } = $props();
@@ -35,10 +37,16 @@
     };
   }
 
+  function setFocusedCue(id: string | null) {
+    provider?.awareness?.setLocalStateField("focusedCueId", id);
+  }
+
   // Initial paint from SSR REST data; Y.Doc takes over once connected.
   let cues = $state<LiveCue[]>(data.cues.map(restCueToLive));
   let connectionStatus = $state<"idle" | "connecting" | "connected" | "disconnected">("idle");
   let activeTab = $state<"video" | "waveform" | "cues">("cues");
+  let roster = $state<PresenceUser[]>([]);
+  let presenceByCue = $state<Map<string, PresenceUser[]>>(new Map());
 
   const ready = $derived(data.episode.status === "ready_for_edit");
   const mediaUrl = $derived(data.episode.audioUrl);
@@ -94,6 +102,29 @@
 
     provider.document.getArray(CUES_ARRAY_KEY).observeDeep(refresh);
     exposeDocForDebug(provider);
+
+    const awareness = provider.awareness;
+    const sessionUser = data.session?.user;
+    if (awareness && sessionUser) {
+      awareness.setLocalStateField("user", {
+        id: sessionUser.id,
+        name: sessionUser.name,
+        color: userColor(sessionUser.id),
+      });
+    }
+    const updatePresence = () => {
+      if (!awareness) return;
+      const derived = derivePresence(
+        awareness.getStates() as Map<number, PresenceState>,
+        awareness.clientID,
+      );
+      roster = derived.roster;
+      presenceByCue = derived.byCue;
+    };
+    if (awareness) {
+      awareness.on("change", updatePresence);
+      updatePresence();
+    }
 
     // JASSUB initialisation. Bound to the rendered <video> element via bind:this.
     // Subtitles overlay the video's canvas region — even for audio-only sources,
@@ -177,6 +208,10 @@
       peaks = null;
       jassub?.destroy();
       jassub = null;
+      if (awareness) {
+        awareness.off("change", updatePresence);
+        awareness.setLocalState(null);
+      }
       provider?.destroy();
       provider = null;
     };
@@ -246,10 +281,20 @@
     </section>
 
     <section class="pane pane-cues" class:tab-active={activeTab === "cues"}>
-      <ol class="cue-list">
+      <PresenceRoster users={roster} />
+      <ol
+        class="cue-list"
+        onfocusout={(e) => {
+          if (!(e.currentTarget as HTMLElement).contains(e.relatedTarget as Node | null)) {
+            setFocusedCue(null);
+          }
+        }}
+      >
         {#each cues as cue (cue.id)}
           <CueRow
             {cue}
+            remoteUsers={presenceByCue.get(cue.id) ?? []}
+            onFocusCue={setFocusedCue}
             onTextEdit={(id, t) => {
               if (provider) applyCueTextEdit(provider.document, id, t);
             }}
