@@ -15,7 +15,7 @@
           <button
             class="term"
             type="button"
-            title={term.notes ?? undefined}
+            title={term.notes || undefined}
             onmousedown={(e) => e.preventDefault()}
             onclick={() => onInsert(term.targetText)}
           >
@@ -31,7 +31,7 @@
 </div>
 
 <style>
-  .glossary { padding: 0.5rem; overflow-y: auto; }
+  .glossary { padding: 0.5rem; }
   .glossary-title { font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.04em; color: #666; margin: 0 0 0.5rem; }
   .terms { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.25rem; }
   .term { display: flex; gap: 0.4rem; align-items: baseline; width: 100%; text-align: left; background: none; border: 1px solid #eee; border-radius: 4px; padding: 0.3rem 0.4rem; cursor: pointer; font: inherit; }

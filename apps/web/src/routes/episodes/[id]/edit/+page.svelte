@@ -47,6 +47,8 @@
   // the synthetic 'input' event drives CueRow.handleTextInput -> onTextEdit ->
   // applyCueTextEdit. No-op if no cue textarea is focused. (The panel button's
   // onmousedown preventDefault keeps that textarea focused through the click.)
+  // Known MVP edge: clicking mid-IME-composition can interleave the partial text
+  // with the inserted term (CueRow gates onTextEdit on `composing`); rare, accepted.
   function insertTerm(targetText: string) {
     const el = document.activeElement;
     if (!(el instanceof HTMLTextAreaElement) || !el.classList.contains("cue-text")) return;
