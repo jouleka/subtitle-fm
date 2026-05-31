@@ -19,8 +19,11 @@
   import CueRow from "$lib/CueRow.svelte";
   import PresenceRoster from "$lib/PresenceRoster.svelte";
   import GlossaryPanel from "$lib/GlossaryPanel.svelte";
+  import { matchingTermIds } from "$lib/glossary-match";
+  import { fetchGlossary } from "$lib/glossary-api";
   import { userColor, derivePresence, type PresenceUser, type PresenceState } from "$lib/presence";
   import type { Cue } from "$lib/types";
+  import type { GlossaryTerm } from "@subtitle-fm/shared";
 
   let { data }: { data: PageData } = $props();
 
@@ -41,6 +44,10 @@
 
   function setFocusedCue(id: string | null) {
     provider?.awareness?.setLocalStateField("focusedCueId", id);
+    // Sticky: keep the badge anchored to the last focused cue while the user
+    // interacts with the glossary panel. The awareness value still clears to null
+    // on blur (presence stays accurate); only the local sticky id persists.
+    if (id) focusedCueId = id;
   }
 
   // Click-to-fill: insert a glossary term's translation at the focused cue's
@@ -65,6 +72,23 @@
   let activeTab = $state<"video" | "waveform" | "cues" | "glossary">("cues");
   let roster = $state<PresenceUser[]>([]);
   let presenceByCue = $state<Map<string, PresenceUser[]>>(new Map());
+
+  // Glossary: local $state so refetch (after add/edit/delete) updates the panel.
+  let glossaryTerms = $state<GlossaryTerm[]>(data.glossaryTerms);
+  // Sticky id of the last focused cue (set in setFocusedCue, never cleared on blur).
+  let focusedCueId = $state<string | null>(null);
+  const focusedCueText = $derived(cues.find((c) => c.id === focusedCueId)?.text ?? "");
+  // Re-runs over all terms each keystroke (cues is reassigned wholesale by the Yjs
+  // observer). Fine for small per-show glossaries.
+  const matchedTermIds = $derived(matchingTermIds(focusedCueText, glossaryTerms));
+
+  async function refreshGlossary() {
+    try {
+      glossaryTerms = await fetchGlossary(PUBLIC_API_URL, data.episode.showId);
+    } catch {
+      // Keep the current list on a transient refresh failure; editor stays usable.
+    }
+  }
 
   let publishing = $state(false);
   let publishMsg = $state<string | null>(null);
@@ -369,7 +393,13 @@
       {/if}
     </section>
     <section class="pane pane-glossary" class:tab-active={activeTab === "glossary"}>
-      <GlossaryPanel terms={data.glossaryTerms} onInsert={insertTerm} />
+      <GlossaryPanel
+        terms={glossaryTerms}
+        matchedIds={matchedTermIds}
+        showId={data.episode.showId}
+        onInsert={insertTerm}
+        onChanged={refreshGlossary}
+      />
     </section>
   </main>
 {/if}
