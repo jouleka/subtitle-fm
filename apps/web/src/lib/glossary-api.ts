@@ -23,7 +23,11 @@ export async function fetchGlossary(apiBase: string, showId: string): Promise<Gl
   return ((await res.json()) as { glossaryTerms: GlossaryTerm[] }).glossaryTerms;
 }
 
-export async function createTerm(apiBase: string, showId: string, input: CreateGlossaryTerm): Promise<GlossaryTerm> {
+export async function createTerm(
+  apiBase: string,
+  showId: string,
+  input: CreateGlossaryTerm,
+): Promise<GlossaryTerm> {
   const res = await fetch(glossaryUrl(apiBase, showId), {
     method: 'POST',
     credentials: 'include',

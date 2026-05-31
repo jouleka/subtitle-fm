@@ -1,7 +1,7 @@
 <script lang="ts">
-  import { GlossaryTermKind } from '@subtitle-fm/shared';
-  import type { CreateGlossaryTerm, UpdateGlossaryTerm } from '@subtitle-fm/shared';
-  import { buildTermPayload, type TermFormFields } from '$lib/glossary-form';
+  import { GlossaryTermKind } from "@subtitle-fm/shared";
+  import type { CreateGlossaryTerm, UpdateGlossaryTerm } from "@subtitle-fm/shared";
+  import { buildTermPayload, type TermFormFields } from "$lib/glossary-form";
 
   let {
     mode,
@@ -11,7 +11,7 @@
     onSubmit,
     onClose,
   }: {
-    mode: 'create' | 'edit';
+    mode: "create" | "edit";
     initial: TermFormFields;
     error: string | null;
     submitting: boolean;
@@ -27,7 +27,7 @@
 
   // Create needs a source + target; edit only target (source is read-only).
   const valid = $derived(
-    mode === 'create'
+    mode === "create"
       ? sourceText.trim().length > 0 && targetText.trim().length > 0
       : targetText.trim().length > 0,
   );
@@ -37,18 +37,18 @@
   });
 
   function friendlyError(code: string): string {
-    if (code === 'duplicate_source') return 'A term with this source already exists.';
-    if (code === 'unauthorized') return 'Your session expired — reload to continue.';
-    return 'Something went wrong. Please try again.';
+    if (code === "duplicate_source") return "A term with this source already exists.";
+    if (code === "unauthorized") return "Your session expired — reload to continue.";
+    return "Something went wrong. Please try again.";
   }
 
   function submit(e: Event) {
     e.preventDefault();
     if (!valid || submitting) return;
     const payload =
-      mode === 'create'
-        ? buildTermPayload('create', { sourceText, targetText, kind, notes })
-        : buildTermPayload('edit', { sourceText, targetText, kind, notes });
+      mode === "create"
+        ? buildTermPayload("create", { sourceText, targetText, kind, notes })
+        : buildTermPayload("edit", { sourceText, targetText, kind, notes });
     onSubmit(payload);
   }
 
@@ -58,7 +58,7 @@
     if (e.target === e.currentTarget) onClose();
   }
   function onKeydown(e: KeyboardEvent) {
-    if (e.key === 'Escape') onClose();
+    if (e.key === "Escape") onClose();
   }
 </script>
 
@@ -69,12 +69,12 @@
     class="modal"
     role="dialog"
     aria-modal="true"
-    aria-label={mode === 'create' ? 'Add glossary term' : 'Edit glossary term'}
+    aria-label={mode === "create" ? "Add glossary term" : "Edit glossary term"}
   >
     <form onsubmit={submit}>
       <label>
         <span>Source</span>
-        {#if mode === 'create'}
+        {#if mode === "create"}
           <input bind:this={firstFieldEl} bind:value={sourceText} type="text" />
         {:else}
           <input value={initial.sourceText} type="text" readonly />
@@ -82,7 +82,7 @@
       </label>
       <label>
         <span>Target</span>
-        {#if mode === 'create'}
+        {#if mode === "create"}
           <input bind:value={targetText} type="text" />
         {:else}
           <input bind:this={firstFieldEl} bind:value={targetText} type="text" />
@@ -103,7 +103,7 @@
       {#if error}<p class="error" role="alert">{friendlyError(error)}</p>{/if}
       <div class="actions">
         <button type="button" onclick={onClose} disabled={submitting}>Cancel</button>
-        <button type="submit" disabled={!valid || submitting}>{submitting ? 'Saving…' : 'Save'}</button>
+        <button type="submit" disabled={!valid || submitting}>{submitting ? "Saving…" : "Save"}</button>
       </div>
     </form>
   </div>

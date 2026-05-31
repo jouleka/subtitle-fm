@@ -2,7 +2,9 @@ import { expect, test } from 'bun:test';
 import { matchingTermIds } from './glossary-match';
 import type { GlossaryTerm } from '@subtitle-fm/shared';
 
-function term(over: Partial<GlossaryTerm> & { id: string; sourceText: string; targetText: string }): GlossaryTerm {
+function term(
+  over: Partial<GlossaryTerm> & { id: string; sourceText: string; targetText: string },
+): GlossaryTerm {
   return { showId: 'show-1', kind: 'term', notes: null, ...over };
 }
 
@@ -41,5 +43,7 @@ test('returns every matching id when several terms appear in the cue', () => {
 test('does no normalization beyond toLowerCase — spaces in sourceText must match exactly', () => {
   const t = term({ id: 'a', sourceText: ' Ninja ', targetText: 'zzz' });
   expect(matchingTermIds('Ninjas jump.', [t]).has('a')).toBe(false);
-  expect(matchingTermIds('A Ninja jumps.', [term({ id: 'b', sourceText: 'Ninja', targetText: 'zzz' })])).toEqual(new Set(['b']));
+  expect(
+    matchingTermIds('A Ninja jumps.', [term({ id: 'b', sourceText: 'Ninja', targetText: 'zzz' })]),
+  ).toEqual(new Set(['b']));
 });

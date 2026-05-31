@@ -1,13 +1,13 @@
 <script lang="ts">
-  import { PUBLIC_API_URL } from '$env/static/public';
+  import { PUBLIC_API_URL } from "$env/static/public";
   import type {
     GlossaryTerm,
     GlossaryTermKind,
     CreateGlossaryTerm,
     UpdateGlossaryTerm,
-  } from '@subtitle-fm/shared';
-  import { createTerm, updateTerm, deleteTerm, GlossaryApiError } from '$lib/glossary-api';
-  import GlossaryTermModal from '$lib/GlossaryTermModal.svelte';
+  } from "@subtitle-fm/shared";
+  import { createTerm, updateTerm, deleteTerm, GlossaryApiError } from "$lib/glossary-api";
+  import GlossaryTermModal from "$lib/GlossaryTermModal.svelte";
 
   let {
     terms,
@@ -24,18 +24,18 @@
   } = $props();
 
   let modalOpen = $state(false);
-  let modalMode = $state<'create' | 'edit'>('create');
+  let modalMode = $state<"create" | "edit">("create");
   let modalInitial = $state<{ sourceText: string; targetText: string; kind: GlossaryTermKind; notes: string }>({
-    sourceText: '',
-    targetText: '',
-    kind: 'term',
-    notes: '',
+    sourceText: "",
+    targetText: "",
+    kind: "term",
+    notes: "",
   });
   let modalError = $state<string | null>(null);
   let actionError = $state<string | null>(null);
   let submitting = $state(false);
   let editingId = $state<string | null>(null);
-  let pendingPrefill = '';
+  let pendingPrefill = "";
 
   // mousedown fires before the focused cue textarea blurs → its selection is still
   // live. (Mid-IME-composition the slice may include uncommitted preedit text — a
@@ -43,22 +43,22 @@
   function capturePrefill() {
     const el = document.activeElement;
     pendingPrefill =
-      el instanceof HTMLTextAreaElement && el.classList.contains('cue-text')
+      el instanceof HTMLTextAreaElement && el.classList.contains("cue-text")
         ? el.value.slice(el.selectionStart ?? 0, el.selectionEnd ?? 0)
-        : '';
+        : "";
   }
   function openCreate() {
-    modalMode = 'create';
+    modalMode = "create";
     editingId = null;
     modalError = null;
-    modalInitial = { sourceText: pendingPrefill, targetText: '', kind: 'term', notes: '' };
+    modalInitial = { sourceText: pendingPrefill, targetText: "", kind: "term", notes: "" };
     modalOpen = true;
   }
   function openEdit(t: GlossaryTerm) {
-    modalMode = 'edit';
+    modalMode = "edit";
     editingId = t.id;
     modalError = null;
-    modalInitial = { sourceText: t.sourceText, targetText: t.targetText, kind: t.kind, notes: t.notes ?? '' };
+    modalInitial = { sourceText: t.sourceText, targetText: t.targetText, kind: t.kind, notes: t.notes ?? "" };
     modalOpen = true;
   }
   async function submit(payload: CreateGlossaryTerm | UpdateGlossaryTerm) {
@@ -66,7 +66,7 @@
     modalError = null;
     actionError = null;
     try {
-      if (modalMode === 'create') await createTerm(PUBLIC_API_URL, showId, payload as CreateGlossaryTerm);
+      if (modalMode === "create") await createTerm(PUBLIC_API_URL, showId, payload as CreateGlossaryTerm);
       else await updateTerm(PUBLIC_API_URL, showId, editingId!, payload as UpdateGlossaryTerm);
       modalOpen = false;
       await onChanged();
@@ -78,7 +78,7 @@
         modalOpen = false;
         await onChanged();
       } else {
-        modalError = e instanceof GlossaryApiError ? e.code : 'request_failed';
+        modalError = e instanceof GlossaryApiError ? e.code : "request_failed";
       }
     } finally {
       submitting = false;
@@ -97,8 +97,8 @@
       if (status !== 404) {
         actionError =
           status === 401
-            ? 'Your session expired — reload to continue.'
-            : 'Could not delete that term. Please try again.';
+            ? "Your session expired — reload to continue."
+            : "Could not delete that term. Please try again.";
       }
     }
     await onChanged();
