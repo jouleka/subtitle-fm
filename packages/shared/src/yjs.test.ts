@@ -7,7 +7,9 @@ import {
   cueMapToLive,
   hydrateCuesIntoDoc,
   liveCuesFromDoc,
+  liveCuesFromSnapshot,
   retimeCue,
+  toggleCueNeedsReview,
   type CueSeed,
 } from "./yjs";
 
@@ -272,5 +274,41 @@ describe("applyCueTextEdit", () => {
     hydrateCuesIntoDoc(doc, [seed("a", "a\u{1F600}b")]);
     applyCueTextEdit(doc, "a", "a\u{1F601}b");
     expect(liveCuesFromDoc(doc)[0]!.text).toBe("a\u{1F601}b");
+  });
+});
+
+const seedFixture = (): CueSeed[] => [
+  { id: "11111111-0000-0000-0000-000000000001", orderIndex: 0, startMs: 0, endMs: 1000, text: "one", rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: 0.4, needsReview: true },
+  { id: "11111111-0000-0000-0000-000000000002", orderIndex: 1, startMs: 1000, endMs: 2000, text: "two", rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: 0.9, needsReview: false },
+];
+
+describe("toggleCueNeedsReview", () => {
+  test("clears a flag and reports the change (intent: a reviewer accepts a low-confidence cue)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, seedFixture());
+    const changed = toggleCueNeedsReview(doc, "11111111-0000-0000-0000-000000000001", false);
+    expect(changed).toBe(true);
+    expect(liveCuesFromDoc(doc).find((c) => c.id === "11111111-0000-0000-0000-000000000001")!.needsReview).toBe(false);
+  });
+  test("no-ops when already at the target value (intent: idempotent accept doesn't churn the doc)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, seedFixture());
+    expect(toggleCueNeedsReview(doc, "11111111-0000-0000-0000-000000000002", false)).toBe(false);
+  });
+  test("no-ops for a missing cue id (intent: a stale id from a removed cue is harmless)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, seedFixture());
+    expect(toggleCueNeedsReview(doc, "deadbeef-0000-0000-0000-000000000000", false)).toBe(false);
+  });
+});
+
+describe("liveCuesFromSnapshot", () => {
+  test("round-trips cues incl. needsReview (intent: publish decodes the authoritative Y.Doc snapshot)", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, seedFixture());
+    const bytes = Y.encodeStateAsUpdate(doc);
+    const cues = liveCuesFromSnapshot(bytes);
+    expect(cues.map((c) => c.text)).toEqual(["one", "two"]);
+    expect(cues.map((c) => c.needsReview)).toEqual([true, false]);
   });
 });

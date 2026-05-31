@@ -242,3 +242,35 @@ export function applyCueTextEdit(doc: Y.Doc, cueId: string, newText: string): bo
 
   return changed;
 }
+
+/**
+ * Set needsReview on a cue inside one transaction tagged "sfm-29-review".
+ * Returns false (no write) if the cue is missing or already at `value`.
+ */
+export function toggleCueNeedsReview(doc: Y.Doc, cueId: string, value: boolean): boolean {
+  let changed = false;
+  doc.transact(() => {
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+    for (let i = 0; i < yArr.length; i++) {
+      const m = yArr.get(i);
+      if ((m?.get("id") as string | undefined) === cueId) {
+        if (Boolean(m!.get("needsReview")) !== value) {
+          m!.set("needsReview", value);
+          changed = true;
+        }
+        break;
+      }
+    }
+  }, "sfm-29-review");
+  return changed;
+}
+
+/**
+ * Decode a stored Y.Doc update (snapshots.yjsState bytes) into LiveCue[] — the
+ * authoritative cue state for server-side publish.
+ */
+export function liveCuesFromSnapshot(yjsState: Uint8Array): LiveCue[] {
+  const doc = new Y.Doc();
+  Y.applyUpdate(doc, yjsState);
+  return liveCuesFromDoc(doc);
+}
