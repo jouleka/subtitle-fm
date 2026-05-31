@@ -44,6 +44,7 @@ test('updateTerm PATCHes the per-term URL', async () => {
   await updateTerm('http://api.test', 'show-1', 't1', { targetText: 'b2', kind: 'term', notes: null });
   expect(calls[0].url).toBe('http://api.test/shows/show-1/glossary/t1');
   expect(calls[0].init.method).toBe('PATCH');
+  expect(calls[0].init.credentials).toBe('include');
   expect((calls[0].init.headers as Record<string, string>)['Content-Type']).toBe('application/json');
 });
 
@@ -52,6 +53,7 @@ test('deleteTerm DELETEs the per-term URL', async () => {
   await deleteTerm('http://api.test', 'show-1', 't1');
   expect(calls[0].url).toBe('http://api.test/shows/show-1/glossary/t1');
   expect(calls[0].init.method).toBe('DELETE');
+  expect(calls[0].init.credentials).toBe('include');
 });
 
 test('a non-OK response throws GlossaryApiError carrying the API error code (so the modal can show duplicate_source)', async () => {
