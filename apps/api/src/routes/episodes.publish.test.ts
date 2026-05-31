@@ -87,6 +87,7 @@ describe("POST /episodes/:id/publish", () => {
     const ass = (putObjectMock.mock.calls[0] as unknown[])[2] as string;
     expect(ass).toContain("[Events]");
     expect(ass).toContain("Dialogue: ");
+    expect((putObjectMock.mock.calls[0] as unknown[])[3]).toBe("text/plain; charset=utf-8");
     const [ep] = await db.select({ status: schema.episodes.status }).from(schema.episodes).where(eq(schema.episodes.id, EP_CLEAN)).limit(1);
     expect(ep!.status).toBe("published");
   });
@@ -94,10 +95,12 @@ describe("POST /episodes/:id/publish", () => {
     authed();
     expect((await app.request(`/episodes/00000000-0000-0000-0000-0000000000ff/publish`, { method: "POST" })).status).toBe(404);
   });
-  test("re-publishing an already-published episode is idempotent 200 (intent: retry-safe)", async () => {
+  test("re-publishing an already-published episode is an idempotent no-op 200 (intent: retry-safe, no canonical-artifact overwrite)", async () => {
+    await db.update(schema.episodes).set({ status: "published" }).where(eq(schema.episodes.id, EP_CLEAN));
     authed();
     const res = await app.request(`/episodes/${EP_CLEAN}/publish`, { method: "POST" });
     expect(res.status).toBe(200);
     expect(((await res.json()) as { status: string }).status).toBe("published");
+    expect(putObjectMock).toHaveBeenCalledTimes(0); // early-return skips re-upload
   });
 });

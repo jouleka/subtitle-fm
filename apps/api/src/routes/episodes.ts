@@ -61,7 +61,12 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .where(eq(schema.episodes.id, id))
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
-    if (!['ready_for_edit', 'in_review', 'published'].includes(ep.status))
+    // Already published: idempotent no-op. Do NOT re-serialize/overwrite the
+    // canonical artifact with possibly-newer edited state. (A failed status flip
+    // leaves status non-published, so a genuine retry still completes below.)
+    if (ep.status === 'published')
+      return c.json({ status: 'published', key: `subtitles/${id}/published.ass` });
+    if (!['ready_for_edit', 'in_review'].includes(ep.status))
       return c.json({ error: 'not_publishable', currentStatus: ep.status }, 409);
 
     const [snap] = await db
@@ -97,7 +102,11 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
     }
 
     const key = `subtitles/${id}/published.ass`;
-    await putObject('media', key, ass, 'text/plain; charset=utf-8');
+    try {
+      await putObject('media', key, ass, 'text/plain; charset=utf-8'); // artifact before the status flip
+    } catch (e) {
+      return c.json({ error: 'r2_upload_failed', detail: (e as Error).message }, 502);
+    }
 
     const result = await advanceEpisodeStatus(db, id, { from: ['ready_for_edit', 'in_review'], to: 'published' });
     if (!result.advanced && result.currentStatus !== 'published')
