@@ -64,6 +64,7 @@
   async function submit(payload: CreateGlossaryTerm | UpdateGlossaryTerm) {
     submitting = true;
     modalError = null;
+    actionError = null;
     try {
       if (modalMode === 'create') await createTerm(PUBLIC_API_URL, showId, payload as CreateGlossaryTerm);
       else await updateTerm(PUBLIC_API_URL, showId, editingId!, payload as UpdateGlossaryTerm);
