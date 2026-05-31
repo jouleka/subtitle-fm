@@ -8,10 +8,11 @@
     liveCuesFromDoc,
     retimeCue,
     applyCueTextEdit,
+    toggleCueNeedsReview,
     type LiveCue,
   } from "@subtitle-fm/shared/yjs";
   import { defaultParsedAss, serializeAss } from "@subtitle-fm/ass";
-  import { PUBLIC_COLLAB_URL } from "$env/static/public";
+  import { PUBLIC_COLLAB_URL, PUBLIC_API_URL } from "$env/static/public";
   import { jassubAssets } from "$lib/jassub-assets";
   import { exposeDocForDebug } from "$lib/debug-y";
   import { initPeaksController, type PeaksController } from "$lib/peaks-controller";
@@ -64,6 +65,29 @@
   let activeTab = $state<"video" | "waveform" | "cues" | "glossary">("cues");
   let roster = $state<PresenceUser[]>([]);
   let presenceByCue = $state<Map<string, PresenceUser[]>>(new Map());
+
+  let publishing = $state(false);
+  let publishMsg = $state<string | null>(null);
+  const unreviewedCount = $derived(cues.filter((c) => c.needsReview).length);
+
+  async function publish() {
+    publishing = true;
+    publishMsg = null;
+    try {
+      const res = await fetch(`${PUBLIC_API_URL}/episodes/${data.episode.id}/publish`, {
+        method: "POST",
+        credentials: "include",
+      });
+      const body = await res.json().catch(() => ({}));
+      publishMsg = res.ok
+        ? `Published → ${(body as { key?: string }).key ?? "ok"}`
+        : `Publish failed (${res.status}): ${(body as { error?: string }).error ?? "error"}`;
+    } catch (e) {
+      publishMsg = `Publish failed: ${(e as Error).message}`;
+    } finally {
+      publishing = false;
+    }
+  }
 
   const ready = $derived(data.episode.status === "ready_for_edit");
   const mediaUrl = $derived(data.episode.audioUrl);
@@ -288,6 +312,13 @@
       <button class:active={activeTab === "cues"} onclick={() => (activeTab = "cues")}>Cues</button>
       <button class:active={activeTab === "glossary"} onclick={() => (activeTab = "glossary")}>Glossary</button>
       <span class="conn">collab: {connectionStatus}</span>
+      <button
+        class="publish-btn"
+        disabled={publishing || unreviewedCount > 0 || data.episode.status === "published"}
+        title={unreviewedCount > 0 ? `${unreviewedCount} cue(s) need review` : "Publish the finalized .ass"}
+        onclick={publish}
+      >{publishing ? "Publishing…" : "Publish"}</button>
+      {#if publishMsg}<span class="publish-msg">{publishMsg}</span>{/if}
     </nav>
 
     <section class="pane pane-video" class:tab-active={activeTab === "video"}>
@@ -320,6 +351,7 @@
               provider
                 ? retimeCue(provider.document, id, s, e)
                 : { ok: false, reason: "not-found" }}
+            onClearReview={(id) => { if (provider) toggleCueNeedsReview(provider.document, id, false); }}
           />
         {/each}
         {#if cues.length === 0}
@@ -375,6 +407,19 @@
     font-family: ui-monospace, monospace;
     font-size: 0.8rem;
     color: #888;
+  }
+  .publish-btn {
+    padding: 0.35rem 0.75rem;
+    cursor: pointer;
+  }
+  .publish-btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+  }
+  .publish-msg {
+    font-size: 0.8rem;
+    color: #555;
+    margin-left: 0.5rem;
   }
 
   .pane {

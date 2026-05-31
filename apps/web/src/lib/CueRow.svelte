@@ -10,12 +10,14 @@
     onRetime,
     remoteUsers = [],
     onFocusCue,
+    onClearReview,
   }: {
     cue: LiveCue;
     onTextEdit: (id: string, newText: string) => void;
     onRetime: (id: string, startMs: number, endMs: number) => RetimeResult;
     remoteUsers?: PresenceUser[];
     onFocusCue: (id: string) => void;
+    onClearReview: (id: string) => void;
   } = $props();
 
   let textEl: HTMLTextAreaElement | undefined = $state();
@@ -170,7 +172,7 @@
       aria-label={`cue ${cue.orderIndex + 1} text`}
     ></textarea>
   </div>
-  {#if cue.needsReview}<span class="badge">review</span>{/if}
+  {#if cue.needsReview}<button type="button" class="badge review-btn" onclick={() => onClearReview(cue.id)}>Mark reviewed</button>{/if}
   {#if remoteUsers.length > 0}
     <span class="remote-labels">
       {#each remoteUsers as u (u.id)}
@@ -263,6 +265,12 @@
     padding: 0 0.35rem;
     border-radius: 4px;
     align-self: center;
+  }
+  .review-btn {
+    border: none;
+    cursor: pointer;
+    font: inherit;
+    font-size: 0.7rem;
   }
   .cue.remote-focused {
     outline: 2px solid var(--remote-color);
