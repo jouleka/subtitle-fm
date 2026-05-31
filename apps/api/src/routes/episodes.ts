@@ -3,11 +3,15 @@ import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { and, asc, eq } from 'drizzle-orm';
 import { schema } from '@subtitle-fm/db';
+import { advanceEpisodeStatus } from '@subtitle-fm/db';
 import { db } from '../lib/db';
 import { preprocessQueue } from '../lib/queue';
 import { JOB_OPTS_DEFAULT, type PreprocessJob } from '@subtitle-fm/shared';
+import { liveCuesFromSnapshot, type LiveCue } from '@subtitle-fm/shared/yjs';
+import { serializeAss, defaultParsedAss } from '@subtitle-fm/ass';
 import { log } from '../lib/log';
 import { requireSession, type AuthVariables } from '../lib/session';
+import { putObject } from '../lib/r2';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
@@ -48,6 +52,57 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .where(eq(schema.cues.episodeId, id))
       .orderBy(asc(schema.cues.orderIndex));
     return c.json({ cues: rows });
+  })
+  .post('/:id/publish', requireSession, async (c) => {
+    const id = c.req.param('id') as string;
+    const [ep] = await db
+      .select({ id: schema.episodes.id, status: schema.episodes.status })
+      .from(schema.episodes)
+      .where(eq(schema.episodes.id, id))
+      .limit(1);
+    if (!ep) return c.json({ error: 'episode_not_found' }, 404);
+    if (!['ready_for_edit', 'in_review', 'published'].includes(ep.status))
+      return c.json({ error: 'not_publishable', currentStatus: ep.status }, 409);
+
+    const [snap] = await db
+      .select({ yjsState: schema.snapshots.yjsState })
+      .from(schema.snapshots)
+      .where(and(eq(schema.snapshots.episodeId, id), eq(schema.snapshots.label, 'live')))
+      .limit(1);
+    let cues: LiveCue[];
+    if (snap) {
+      cues = liveCuesFromSnapshot(snap.yjsState);
+    } else {
+      const rows = await db
+        .select()
+        .from(schema.cues)
+        .where(eq(schema.cues.episodeId, id))
+        .orderBy(asc(schema.cues.orderIndex));
+      cues = rows.map((r) => ({
+        id: r.id, orderIndex: r.orderIndex, startMs: r.startMs, endMs: r.endMs,
+        text: r.text, rawOverrideTags: r.rawOverrideTags, styleName: r.styleName,
+        speakerId: r.speakerId, confidence: r.confidence, needsReview: r.needsReview,
+      }));
+    }
+
+    if (cues.length === 0) return c.json({ error: 'no_cues' }, 409);
+    const unreviewed = cues.filter((cue) => cue.needsReview).length;
+    if (unreviewed > 0) return c.json({ error: 'unreviewed_cues', count: unreviewed }, 409);
+
+    let ass: string;
+    try {
+      ass = serializeAss(defaultParsedAss(cues));
+    } catch (e) {
+      return c.json({ error: 'serialize_failed', detail: (e as Error).message }, 422);
+    }
+
+    const key = `subtitles/${id}/published.ass`;
+    await putObject('media', key, ass, 'text/plain; charset=utf-8');
+
+    const result = await advanceEpisodeStatus(db, id, { from: ['ready_for_edit', 'in_review'], to: 'published' });
+    if (!result.advanced && result.currentStatus !== 'published')
+      return c.json({ error: 'not_publishable', currentStatus: result.currentStatus }, 409);
+    return c.json({ status: 'published', key });
   })
   .post('/', requireSession, zValidator('json', createEpisodeSchema), async (c) => {
     const input = c.req.valid('json');

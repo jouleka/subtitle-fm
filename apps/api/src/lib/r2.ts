@@ -101,3 +101,23 @@ export async function deleteObject(bucket: R2BucketName, key: string): Promise<v
     }),
   );
 }
+
+/**
+ * Upload bytes/string directly to R2 (server-side; the published .ass is small).
+ * Distinct from presignPut, which hands the browser a URL to upload to itself.
+ */
+export async function putObject(
+  bucket: R2BucketName,
+  key: string,
+  body: string | Uint8Array,
+  contentType?: string,
+): Promise<void> {
+  await getClient().send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKETS[bucket](),
+      Key: key,
+      Body: body,
+      ...(contentType ? { ContentType: contentType } : {}),
+    }),
+  );
+}
