@@ -9,6 +9,7 @@ import * as authModule from "../lib/auth";
 const SHOW_ID = "test-show-sfm29-publish";
 const EP_CLEAN = "77777777-7777-7777-7777-777777777771";
 const EP_FLAGGED = "77777777-7777-7777-7777-777777777772";
+const EP_BADTEXT = "77777777-7777-7777-7777-777777777773";
 const FAKE_USER = { id: "77777777-0000-0000-0000-000000000001", handle: "rev-sfm29", email: "rev-sfm29@example.com" };
 const FAKE_SESSION = { id: "77777777-0000-0000-0000-000000000002", userId: FAKE_USER.id, token: "tok-sfm29", expiresAt: new Date(Date.now() + 24 * 3600 * 1000) };
 
@@ -39,7 +40,7 @@ async function snapshotFor(episodeId: string, seeds: CueSeed[]) {
   await db.insert(schema.snapshots).values({ episodeId, label: "live", yjsState }).onConflictDoNothing();
 }
 async function cleanup() {
-  for (const id of [EP_CLEAN, EP_FLAGGED]) {
+  for (const id of [EP_CLEAN, EP_FLAGGED, EP_BADTEXT]) {
     await db.delete(schema.snapshots).where(eq(schema.snapshots.episodeId, id));
     await db.delete(schema.cues).where(eq(schema.cues.episodeId, id));
     await db.delete(schema.episodes).where(eq(schema.episodes.id, id));
@@ -55,6 +56,9 @@ beforeAll(async () => {
     await db.insert(schema.episodes).values({ id, showId: SHOW_ID, number: id === EP_CLEAN ? 1 : 2, title: "pub fixture", status: "ready_for_edit" });
     await snapshotFor(id, seed(flagged));
   }
+  // A cue whose text contains a literal newline — serializeAss throws → 422.
+  await db.insert(schema.episodes).values({ id: EP_BADTEXT, showId: SHOW_ID, number: 3, title: "bad text fixture", status: "ready_for_edit" });
+  await snapshotFor(EP_BADTEXT, [{ id: crypto.randomUUID(), orderIndex: 0, startMs: 0, endMs: 1000, text: "a\nb", rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: null, needsReview: false }]);
 });
 afterAll(async () => { await cleanup(); });
 beforeEach(() => {
@@ -94,6 +98,13 @@ describe("POST /episodes/:id/publish", () => {
   test("404 for an unknown episode", async () => {
     authed();
     expect((await app.request(`/episodes/00000000-0000-0000-0000-0000000000ff/publish`, { method: "POST" })).status).toBe(404);
+  });
+  test("422 when a cue text has a literal newline (intent: serialize fails loud, never a broken .ass uploaded)", async () => {
+    authed();
+    const res = await app.request(`/episodes/${EP_BADTEXT}/publish`, { method: "POST" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: string }).error).toBe("serialize_failed");
+    expect(putObjectMock).toHaveBeenCalledTimes(0);
   });
   test("re-publishing an already-published episode is an idempotent no-op 200 (intent: retry-safe, no canonical-artifact overwrite)", async () => {
     await db.update(schema.episodes).set({ status: "published" }).where(eq(schema.episodes.id, EP_CLEAN));
