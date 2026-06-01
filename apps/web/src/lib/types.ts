@@ -34,7 +34,6 @@ export interface Cue {
   startMs: number;
   endMs: number;
   text: string;
-  rawOverrideTags: string;
   styleName: string;
   speakerId: string | null;
   confidence: number | null;

@@ -8,7 +8,6 @@ export interface DefaultParsedAssInput {
   text: string;
   styleName: string;
   speakerId: string | null;
-  rawOverrideTags: string;
 }
 
 const DEFAULT_INFO: AssScriptInfo = {

@@ -9,7 +9,6 @@ export interface LiveCue {
   startMs: number;
   endMs: number;
   text: string;
-  rawOverrideTags: string;
   styleName: string;
   speakerId: string | null;
   confidence: number | null;
@@ -23,7 +22,6 @@ export interface CueSeed {
   startMs: number;
   endMs: number;
   text: string;
-  rawOverrideTags: string;
   styleName: string;
   speakerId: string | null;
   confidence: number | null;
@@ -50,7 +48,6 @@ function cueSeedToYMap(seed: CueSeed): Y.Map<unknown> {
   m.set("orderIndex", seed.orderIndex);
   m.set("startMs", seed.startMs);
   m.set("endMs", seed.endMs);
-  m.set("rawOverrideTags", seed.rawOverrideTags);
   m.set("styleName", seed.styleName);
   m.set("speakerId", seed.speakerId);
   m.set("confidence", seed.confidence);
@@ -69,7 +66,6 @@ export function cueMapToLive(map: Y.Map<unknown>): LiveCue {
     startMs: map.get("startMs") as number,
     endMs: map.get("endMs") as number,
     text: text ? text.toString() : "",
-    rawOverrideTags: (map.get("rawOverrideTags") as string | undefined) ?? "",
     styleName: (map.get("styleName") as string | undefined) ?? "Default",
     speakerId: (map.get("speakerId") as string | null | undefined) ?? null,
     confidence: (map.get("confidence") as number | null | undefined) ?? null,
@@ -327,7 +323,6 @@ export function splitCue(doc: Y.Doc, cueId: string, caretOffset: number): SplitR
     newMap.set("orderIndex", idx + 1);
     newMap.set("startMs", boundary);
     newMap.set("endMs", endMs);
-    newMap.set("rawOverrideTags", "");
     newMap.set("styleName", (target.get("styleName") as string | undefined) ?? "Default");
     newMap.set("speakerId", (target.get("speakerId") as string | null | undefined) ?? null);
     newMap.set("confidence", null);
@@ -356,7 +351,6 @@ function cloneCueMap(src: Y.Map<unknown>): Y.Map<unknown> {
   m.set("orderIndex", src.get("orderIndex"));
   m.set("startMs", src.get("startMs"));
   m.set("endMs", src.get("endMs"));
-  m.set("rawOverrideTags", (src.get("rawOverrideTags") as string | undefined) ?? "");
   m.set("styleName", (src.get("styleName") as string | undefined) ?? "Default");
   m.set("speakerId", (src.get("speakerId") as string | null | undefined) ?? null);
   m.set("confidence", (src.get("confidence") as number | null | undefined) ?? null);
@@ -414,7 +408,7 @@ export type InsertResult =
  *                             anchor's back half at the midpoint.
  *   - an unknown id        -> { ok: false, reason: "not-found" }.
  * New cue: empty Y.Text, needsReview=true (new content must pass the publish gate), confidence=null,
- * rawOverrideTags="", inherits styleName/speakerId from the anchor.
+ * inherits styleName/speakerId from the anchor.
  */
 export function insertCue(doc: Y.Doc, afterCueId: string | null): InsertResult {
   let result: InsertResult = { ok: false, reason: "not-found" };
@@ -478,7 +472,6 @@ export function insertCue(doc: Y.Doc, afterCueId: string | null): InsertResult {
     newMap.set("orderIndex", idx + 1); // provisional; renumberOrderIndex fixes it (idx=-1 => 0)
     newMap.set("startMs", newStart);
     newMap.set("endMs", newEnd);
-    newMap.set("rawOverrideTags", "");
     newMap.set("styleName", styleName);
     newMap.set("speakerId", speakerId);
     newMap.set("confidence", null);

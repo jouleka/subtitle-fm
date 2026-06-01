@@ -16,7 +16,6 @@ export const Cue = z.object({
   startMs: z.number().int().nonnegative(),
   endMs: z.number().int().nonnegative(),
   text: z.string(),
-  rawOverrideTags: z.string().default(''),
   styleName: z.string().default('Default'),
   speakerId: z.string().nullable(),
   confidence: z.number().min(0).max(1).nullable(),

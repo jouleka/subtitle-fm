@@ -38,7 +38,6 @@
       startMs: c.startMs,
       endMs: c.endMs,
       text: c.text,
-      rawOverrideTags: c.rawOverrideTags,
       styleName: c.styleName,
       speakerId: c.speakerId,
       confidence: c.confidence,

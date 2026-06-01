@@ -22,7 +22,6 @@ export const cues = pgTable(
     startMs: integer('start_ms').notNull(),
     endMs: integer('end_ms').notNull(),
     text: text('text').notNull().default(''),
-    rawOverrideTags: text('raw_override_tags').notNull().default(''),
     styleName: text('style_name').notNull().default('Default'),
     speakerId: text('speaker_id'),
     confidence: doublePrecision('confidence'),

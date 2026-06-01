@@ -94,7 +94,7 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
         .orderBy(asc(schema.cues.orderIndex));
       cues = rows.map((r) => ({
         id: r.id, orderIndex: r.orderIndex, startMs: r.startMs, endMs: r.endMs,
-        text: r.text, rawOverrideTags: r.rawOverrideTags, styleName: r.styleName,
+        text: r.text, styleName: r.styleName,
         speakerId: r.speakerId, confidence: r.confidence, needsReview: r.needsReview,
       }));
     }

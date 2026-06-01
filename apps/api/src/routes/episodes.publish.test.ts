@@ -31,7 +31,7 @@ mock.module("../lib/r2", () => ({
 const { app } = await import("../index");
 
 function seed(needsReview: boolean): CueSeed[] {
-  return [{ id: crypto.randomUUID(), orderIndex: 0, startMs: 0, endMs: 1000, text: "hello", rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: 0.5, needsReview }];
+  return [{ id: crypto.randomUUID(), orderIndex: 0, startMs: 0, endMs: 1000, text: "hello", styleName: "Default", speakerId: null, confidence: 0.5, needsReview }];
 }
 async function snapshotFor(episodeId: string, seeds: CueSeed[]) {
   const doc = new Y.Doc();
@@ -58,7 +58,7 @@ beforeAll(async () => {
   }
   // A cue whose text contains a literal newline — serializeAss throws → 422.
   await db.insert(schema.episodes).values({ id: EP_BADTEXT, showId: SHOW_ID, number: 3, title: "bad text fixture", status: "ready_for_edit" });
-  await snapshotFor(EP_BADTEXT, [{ id: crypto.randomUUID(), orderIndex: 0, startMs: 0, endMs: 1000, text: "a\nb", rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: null, needsReview: false }]);
+  await snapshotFor(EP_BADTEXT, [{ id: crypto.randomUUID(), orderIndex: 0, startMs: 0, endMs: 1000, text: "a\nb", styleName: "Default", speakerId: null, confidence: null, needsReview: false }]);
 });
 afterAll(async () => { await cleanup(); });
 beforeEach(() => {

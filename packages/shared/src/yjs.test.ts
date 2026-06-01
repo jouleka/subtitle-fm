@@ -24,7 +24,6 @@ const sampleSeed: CueSeed = {
   startMs: 0,
   endMs: 1000,
   text: "hello",
-  rawOverrideTags: "",
   styleName: "Default",
   speakerId: null,
   confidence: 0.9,
@@ -70,7 +69,6 @@ describe("retimeCue", () => {
     startMs,
     endMs,
     text: "",
-    rawOverrideTags: "",
     styleName: "Default",
     speakerId: null,
     confidence: null,
@@ -217,7 +215,6 @@ describe("applyCueTextEdit", () => {
     startMs: 0,
     endMs: 1000,
     text,
-    rawOverrideTags: "",
     styleName: "Default",
     speakerId: null,
     confidence: null,
@@ -283,8 +280,8 @@ describe("applyCueTextEdit", () => {
 });
 
 const seedFixture = (): CueSeed[] => [
-  { id: "11111111-0000-0000-0000-000000000001", orderIndex: 0, startMs: 0, endMs: 1000, text: "one", rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: 0.4, needsReview: true },
-  { id: "11111111-0000-0000-0000-000000000002", orderIndex: 1, startMs: 1000, endMs: 2000, text: "two", rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: 0.9, needsReview: false },
+  { id: "11111111-0000-0000-0000-000000000001", orderIndex: 0, startMs: 0, endMs: 1000, text: "one", styleName: "Default", speakerId: null, confidence: 0.4, needsReview: true },
+  { id: "11111111-0000-0000-0000-000000000002", orderIndex: 1, startMs: 1000, endMs: 2000, text: "two", styleName: "Default", speakerId: null, confidence: 0.9, needsReview: false },
 ];
 
 describe("toggleCueNeedsReview", () => {
@@ -322,7 +319,7 @@ describe("liveCuesFromSnapshot", () => {
 function mkSeed(
   over: Partial<CueSeed> & { id: string; orderIndex: number; startMs: number; endMs: number; text: string },
 ): CueSeed {
-  return { rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: null, needsReview: false, ...over };
+  return { styleName: "Default", speakerId: null, confidence: null, needsReview: false, ...over };
 }
 function mkDoc(seeds: CueSeed[]): Y.Doc {
   const doc = new Y.Doc();

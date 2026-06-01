@@ -1,0 +1,1 @@
+ALTER TABLE "cues" DROP COLUMN "raw_override_tags";

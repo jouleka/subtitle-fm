@@ -10,7 +10,6 @@ const seed: DefaultParsedAssInput = {
   text: "hello",
   styleName: "Default",
   speakerId: null,
-  rawOverrideTags: "",
 };
 
 describe("defaultParsedAss", () => {
