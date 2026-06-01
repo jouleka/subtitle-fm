@@ -8,6 +8,7 @@ import {
   hydrateCuesIntoDoc,
   liveCuesFromDoc,
   liveCuesFromSnapshot,
+  moveCue,
   retimeCue,
   splitCue,
   toggleCueNeedsReview,
@@ -409,6 +410,95 @@ test("splitCue renumbers orderIndex to array index", () => {
 test("splitCue's new cue Y.Map has the same field set as a seeded cue (guards field-drift)", () => {
   const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "left right" })]);
   splitCue(doc, "c1", 4);
+  const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+  expect(new Set(yArr.get(1)!.keys())).toEqual(new Set(yArr.get(0)!.keys()));
+});
+
+// --- SFM-51 moveCue ---
+test("moveCue down swaps a cue with its successor in array order", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+    mkSeed({ id: "c", orderIndex: 2, startMs: 2000, endMs: 3000, text: "C" }),
+  ]);
+  expect(moveCue(doc, "a", "down")).toEqual({ ok: true });
+  expect(liveCuesFromDoc(doc).map((c) => c.id)).toEqual(["b", "a", "c"]);
+});
+
+test("moveCue up moves a cue toward the start", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+    mkSeed({ id: "c", orderIndex: 2, startMs: 2000, endMs: 3000, text: "C" }),
+  ]);
+  expect(moveCue(doc, "c", "up")).toEqual({ ok: true });
+  expect(liveCuesFromDoc(doc).map((c) => c.id)).toEqual(["a", "c", "b"]);
+});
+
+test("moveCue preserves the moved cue's id/text/time/needsReview (position-move keeps its time)", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A", needsReview: true }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+  ]);
+  moveCue(doc, "a", "down");
+  const moved = liveCuesFromDoc(doc).find((c) => c.id === "a")!;
+  expect(moved.text).toBe("A");
+  expect(moved.startMs).toBe(0);
+  expect(moved.endMs).toBe(1000);
+  expect(moved.needsReview).toBe(true);
+});
+
+test("moveCue renumbers orderIndex to array index", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+    mkSeed({ id: "c", orderIndex: 2, startMs: 2000, endMs: 3000, text: "C" }),
+  ]);
+  moveCue(doc, "a", "down");
+  expect(liveCuesFromDoc(doc).map((c) => c.orderIndex)).toEqual([0, 1, 2]);
+});
+
+test("a position-move desorts the array by startMs (the move reorders the list; time travels)", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+  ]);
+  moveCue(doc, "a", "down");
+  expect(liveCuesFromDoc(doc).map((c) => c.startMs)).toEqual([1000, 0]);
+});
+
+test("after a move, sorting cues by orderIndex yields the new array order (so publish reflects the move)", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+  ]);
+  moveCue(doc, "a", "down");
+  const cues = liveCuesFromDoc(doc);
+  const byOrderIndex = [...cues].sort((x, y) => x.orderIndex - y.orderIndex).map((c) => c.id);
+  expect(byOrderIndex).toEqual(cues.map((c) => c.id));
+  expect(byOrderIndex).toEqual(["b", "a"]);
+});
+
+test("moveCue rejects at the edges", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+  ]);
+  expect(moveCue(doc, "a", "up")).toEqual({ ok: false, reason: "edge" });
+  expect(moveCue(doc, "b", "down")).toEqual({ ok: false, reason: "edge" });
+});
+
+test("moveCue returns not-found for an unknown cue", () => {
+  const doc = mkDoc([mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" })]);
+  expect(moveCue(doc, "zzz", "down")).toEqual({ ok: false, reason: "not-found" });
+});
+
+test("moveCue's clone Y.Map has the same field set as a seeded cue (guards field-drift)", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+  ]);
+  moveCue(doc, "a", "down");
   const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
   expect(new Set(yArr.get(1)!.keys())).toEqual(new Set(yArr.get(0)!.keys()));
 });

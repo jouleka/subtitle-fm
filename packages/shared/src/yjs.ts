@@ -347,6 +347,59 @@ export function splitCue(doc: Y.Doc, cueId: string, caretOffset: number): SplitR
   return result;
 }
 
+export type MoveResult = { ok: true } | { ok: false; reason: "not-found" | "edge" };
+
+function cloneCueMap(src: Y.Map<unknown>): Y.Map<unknown> {
+  // MUST mirror every cue field cueMapToLive reads — adding a cue field requires updating this.
+  const m = new Y.Map<unknown>();
+  m.set("id", src.get("id"));
+  m.set("orderIndex", src.get("orderIndex"));
+  m.set("startMs", src.get("startMs"));
+  m.set("endMs", src.get("endMs"));
+  m.set("rawOverrideTags", (src.get("rawOverrideTags") as string | undefined) ?? "");
+  m.set("styleName", (src.get("styleName") as string | undefined) ?? "Default");
+  m.set("speakerId", (src.get("speakerId") as string | null | undefined) ?? null);
+  m.set("confidence", (src.get("confidence") as number | null | undefined) ?? null);
+  m.set("needsReview", Boolean(src.get("needsReview")));
+  const srcText = src.get("text") as Y.Text | undefined;
+  const t = new Y.Text();
+  t.insert(0, srcText ? srcText.toString() : "");
+  m.set("text", t);
+  return m;
+}
+
+/**
+ * Reorder a cue up/down by one position inside one transaction ("sfm-51-move").
+ * Y.Array has no atomic move, so we delete the Y.Map and reinsert a clone (fresh
+ * Y.Text from its string), keeping the cue id. Position-move: the cue keeps its
+ * time and changes list position; orderIndex is renumbered to array index.
+ */
+export function moveCue(doc: Y.Doc, cueId: string, direction: "up" | "down"): MoveResult {
+  let result: MoveResult = { ok: false, reason: "not-found" };
+
+  doc.transact(() => {
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+
+    let idx = -1;
+    for (let i = 0; i < yArr.length; i++) {
+      if ((yArr.get(i)?.get("id") as string | undefined) === cueId) { idx = i; break; }
+    }
+    if (idx < 0) { result = { ok: false, reason: "not-found" }; return; }
+
+    const newIdx = direction === "up" ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= yArr.length) { result = { ok: false, reason: "edge" }; return; }
+
+    const clone = cloneCueMap(yArr.get(idx)!);
+    yArr.delete(idx, 1);
+    yArr.insert(newIdx, [clone]);
+    renumberOrderIndex(yArr);
+
+    result = { ok: true };
+  }, "sfm-51-move");
+
+  return result;
+}
+
 /**
  * Decode a stored Y.Doc update (snapshots.yjsState bytes) into LiveCue[] — the
  * authoritative cue state for server-side publish.
