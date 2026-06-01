@@ -3,6 +3,7 @@
   import type { PresenceUser } from "$lib/presence";
   import { formatMs, parseTimecode } from "$lib/format";
   import { segmentOverrideTags } from "$lib/override-tags";
+  import { classifyCueKeydown } from "$lib/cue-keys";
 
   let {
     cue,
@@ -11,6 +12,9 @@
     remoteUsers = [],
     onFocusCue,
     onClearReview,
+    onSplitCue,
+    onMoveCue,
+    onNavCue,
   }: {
     cue: LiveCue;
     onTextEdit: (id: string, newText: string) => void;
@@ -18,6 +22,9 @@
     remoteUsers?: PresenceUser[];
     onFocusCue: (id: string) => void;
     onClearReview: (id: string) => void;
+    onSplitCue: (id: string, caretOffset: number) => void;
+    onMoveCue: (id: string, direction: "up" | "down") => void;
+    onNavCue: (id: string, direction: "prev" | "next") => void;
   } = $props();
 
   let textEl: HTMLTextAreaElement | undefined = $state();
@@ -90,6 +97,19 @@
     }
   }
 
+  function handleTextKeydown(e: KeyboardEvent) {
+    const action = classifyCueKeydown(e, composing); // `composing` is the existing IME flag
+    if (action.type === "none") return; // incl. Shift+Enter → default newline, and normal typing
+    e.preventDefault();
+    if (action.type === "split") {
+      if (textEl) onSplitCue(cue.id, textEl.selectionStart ?? textEl.value.length);
+    } else if (action.type === "move") {
+      onMoveCue(cue.id, action.direction);
+    } else {
+      onNavCue(cue.id, action.direction);
+    }
+  }
+
   function commitStart() {
     if (!startEl) return;
     const ms = parseTimecode(startEl.value);
@@ -138,6 +158,7 @@
   class:remote-focused={remoteUsers.length > 0}
   style:--remote-color={remoteUsers[0]?.color ?? "transparent"}
   onfocusin={() => onFocusCue(cue.id)}
+  data-cue-id={cue.id}
 >
   <span class="cue-times">
     <input
@@ -165,6 +186,7 @@
       class="cue-text"
       bind:this={textEl}
       oninput={handleTextInput}
+      onkeydown={handleTextKeydown}
       oncompositionstart={() => (composing = true)}
       oncompositionend={handleCompositionEnd}
       onscroll={syncScroll}
