@@ -144,8 +144,9 @@
         credentials: "include",
       });
       const body = await res.json().catch(() => ({}));
+      const keys = (body as { keys?: Record<string, string> }).keys;
       publishMsg = res.ok
-        ? `Published → ${(body as { key?: string }).key ?? "ok"}`
+        ? `Published → ${keys ? Object.keys(keys).join(", ") : ((body as { key?: string }).key ?? "ok")}`
         : `Publish failed (${res.status}): ${(body as { error?: string }).error ?? "error"}`;
     } catch (e) {
       publishMsg = `Publish failed: ${(e as Error).message}`;
