@@ -7,6 +7,7 @@ export const shows = pgTable(
     title: text('title').notNull(),
     slug: text('slug').notNull(),
     description: text('description'),
+    imdbId: text('imdb_id'),
     malId: text('mal_id'),
     anilistId: text('anilist_id'),
     kitsuId: text('kitsu_id'),
