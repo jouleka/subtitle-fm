@@ -19,7 +19,7 @@
   import { PUBLIC_COLLAB_URL, PUBLIC_API_URL } from "$env/static/public";
   import { jassubAssets } from "$lib/jassub-assets";
   import { exposeDocForDebug } from "$lib/debug-y";
-  import { initPeaksController, type PeaksController } from "$lib/peaks-controller";
+  import { initPeaksController, peaksInitShouldRetry, type PeaksController } from "$lib/peaks-controller";
   import CueRow from "$lib/CueRow.svelte";
   import PresenceRoster from "$lib/PresenceRoster.svelte";
   import GlossaryPanel from "$lib/GlossaryPanel.svelte";
@@ -281,6 +281,8 @@
     // inside this IIFE; subsequent cue changes flow through the peaks `$effect`.
     let destroyed = false;
     let peaksInitStarted = false;
+    let peaksRetries = 0;
+    const PEAKS_MAX_INIT_RETRIES = 3;
 
     function localTryStartPeaks() {
       if (destroyed) return;
@@ -322,9 +324,17 @@
           peaks.setCues(cues);
         } catch (err) {
           // Never crash the editor; the placeholder path keeps the rest usable.
-          // Do NOT reset peaksInitStarted — a failure here is non-transient
-          // (bad .dat, network) and retrying on every tab toggle would loop.
           console.error("[peaks] init failed", err);
+          // SFM-50: peaks.js re-checks container visibility AFTER its async data XHR. If the
+          // user left the Waveform tab mid-load the container is now hidden and init throws —
+          // transient, so reset (capped) to let the activeTab $effect retry when the pane is
+          // visible again. A failure while the container is still visible is non-transient
+          // (bad .dat / network) — don't reset (avoid a retry loop).
+          const containerHidden = !zoomviewEl || zoomviewEl.offsetWidth === 0 || zoomviewEl.offsetHeight === 0;
+          if (peaksInitShouldRetry(containerHidden, peaksRetries, PEAKS_MAX_INIT_RETRIES)) {
+            peaksRetries += 1;
+            peaksInitStarted = false;
+          }
         }
       })();
     }

@@ -177,3 +177,19 @@ export async function initPeaksController(
     destroy: () => peaks.destroy(),
   };
 }
+
+/**
+ * Whether a failed peaks.js init should be reset + retried (SFM-50). The only
+ * retryable failure is the visibility race: peaks.js re-checks container
+ * visibility AFTER its async data XHR, so leaving the Waveform tab mid-load
+ * makes init throw with the container now hidden. A failure while the container
+ * is still visible is non-transient (bad .dat / network) and must NOT retry
+ * (would loop on every tab toggle). Capped to bound a pathological hide loop.
+ */
+export function peaksInitShouldRetry(
+  containerHidden: boolean,
+  retries: number,
+  maxRetries: number,
+): boolean {
+  return containerHidden && retries < maxRetries;
+}

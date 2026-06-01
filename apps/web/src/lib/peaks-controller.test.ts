@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { diffCueSegments, type CueInput, type SegmentSnapshot } from "./peaks-controller";
+import { diffCueSegments, peaksInitShouldRetry, type CueInput, type SegmentSnapshot } from "./peaks-controller";
 
 const cue = (overrides: Partial<CueInput> & { id: string }): CueInput => ({
   startMs: 0,
@@ -87,5 +87,19 @@ describe("diffCueSegments", () => {
     const diff = diffCueSegments([{ id: undefined }, segFor(a)], [a]);
     expect(diff.removes).toEqual([]);
     expect(diff.adds).toEqual([]);
+  });
+});
+
+describe("peaksInitShouldRetry", () => {
+  test("retries when the container is hidden and under the cap (the visibility race)", () => {
+    expect(peaksInitShouldRetry(true, 0, 3)).toBe(true);
+    expect(peaksInitShouldRetry(true, 2, 3)).toBe(true);
+  });
+  test("does not retry a still-visible container (genuine, non-transient error)", () => {
+    expect(peaksInitShouldRetry(false, 0, 3)).toBe(false);
+  });
+  test("does not retry once the cap is reached", () => {
+    expect(peaksInitShouldRetry(true, 3, 3)).toBe(false);
+    expect(peaksInitShouldRetry(true, 4, 3)).toBe(false);
   });
 });
