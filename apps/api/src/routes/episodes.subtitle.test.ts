@@ -4,7 +4,7 @@ import { schema } from "@subtitle-fm/db";
 import { eq } from "drizzle-orm";
 
 mock.module("../lib/r2", () => ({
-  presignGet: mock(async () => "https://r2.example/presigned/published.srt"),
+  presignGet: mock(async ({ key }: { key: string }) => `https://r2.example/presigned/${key}`),
   putObject: mock(async () => {}),
   presignPut: mock(async () => ""),
   deleteObject: mock(async () => {}),
@@ -32,7 +32,7 @@ describe("GET /episodes/:id/subtitle.srt", () => {
   test("302-redirects a published episode to the presigned R2 url", async () => {
     const res = await app.request(`/episodes/${EP_PUB}/subtitle.srt`, { redirect: "manual" });
     expect(res.status).toBe(302);
-    expect(res.headers.get("location")).toBe("https://r2.example/presigned/published.srt");
+    expect(res.headers.get("location")).toBe(`https://r2.example/presigned/subtitles/${EP_PUB}/published.srt`);
   });
   test("404 not_published for an unpublished episode", async () => {
     const res = await app.request(`/episodes/${EP_UNPUB}/subtitle.srt`);
@@ -41,6 +41,23 @@ describe("GET /episodes/:id/subtitle.srt", () => {
   });
   test("404 episode_not_found for an unknown id", async () => {
     const res = await app.request(`/episodes/00000000-0000-0000-0000-0000000000ff/subtitle.srt`);
+    expect(res.status).toBe(404);
+  });
+});
+
+describe("GET /episodes/:id/subtitle.vtt", () => {
+  test("302-redirects a published episode to the presigned .vtt R2 url", async () => {
+    const res = await app.request(`/episodes/${EP_PUB}/subtitle.vtt`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe(`https://r2.example/presigned/subtitles/${EP_PUB}/published.vtt`);
+  });
+  test("404 not_published for an unpublished episode", async () => {
+    const res = await app.request(`/episodes/${EP_UNPUB}/subtitle.vtt`);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toBe("not_published");
+  });
+  test("404 episode_not_found for an unknown id", async () => {
+    const res = await app.request(`/episodes/00000000-0000-0000-0000-0000000000ff/subtitle.vtt`);
     expect(res.status).toBe(404);
   });
 });

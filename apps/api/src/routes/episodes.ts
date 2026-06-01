@@ -72,6 +72,18 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
     const url = await presignGet({ bucket: 'media', key: `subtitles/${id}/published.srt` });
     return c.redirect(url, 302);
   })
+  .get('/:id/subtitle.vtt', async (c) => {
+    const id = c.req.param('id');
+    const [ep] = await db
+      .select({ id: schema.episodes.id, status: schema.episodes.status })
+      .from(schema.episodes)
+      .where(eq(schema.episodes.id, id))
+      .limit(1);
+    if (!ep) return c.json({ error: 'episode_not_found' }, 404);
+    if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
+    const url = await presignGet({ bucket: 'media', key: `subtitles/${id}/published.vtt` });
+    return c.redirect(url, 302);
+  })
   .post('/:id/publish', requireSession, async (c) => {
     const id = c.req.param('id') as string;
     const [ep] = await db
