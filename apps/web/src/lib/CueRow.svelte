@@ -99,14 +99,22 @@
 
   function handleTextKeydown(e: KeyboardEvent) {
     const action = classifyCueKeydown(e, composing); // `composing` is the existing IME flag
-    if (action.type === "none") return; // incl. Shift+Enter → default newline, and normal typing
+    if (action.type === "none") return; // normal typing
     e.preventDefault();
     if (action.type === "split") {
       if (textEl) onSplitCue(cue.id, textEl.selectionStart ?? textEl.value.length);
     } else if (action.type === "move") {
       onMoveCue(cue.id, action.direction);
-    } else {
+    } else if (action.type === "nav") {
       onNavCue(cue.id, action.direction);
+    } else if (textEl) {
+      // Shift+Enter inserts the .ass hard line break "\N" — a LITERAL newline makes
+      // serializeAss throw (live JASSUB preview + publish). The synthetic input event
+      // drives handleTextInput → onTextEdit → applyCueTextEdit (collaborative-safe).
+      const start = textEl.selectionStart ?? textEl.value.length;
+      const end = textEl.selectionEnd ?? start;
+      textEl.setRangeText("\\N", start, end, "end");
+      textEl.dispatchEvent(new Event("input", { bubbles: true }));
     }
   }
 

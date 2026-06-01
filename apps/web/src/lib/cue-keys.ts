@@ -1,6 +1,7 @@
 export type CueKeyAction =
   | { type: 'none' }
   | { type: 'split' }
+  | { type: 'newline' }
   | { type: 'move'; direction: 'up' | 'down' }
   | { type: 'nav'; direction: 'prev' | 'next' };
 
@@ -14,7 +15,7 @@ export function classifyCueKeydown(
   if (composing || e.isComposing || e.keyCode === 229) return { type: 'none' };
   if (e.metaKey && e.key === 'ArrowUp') return { type: 'move', direction: 'up' };
   if (e.metaKey && e.key === 'ArrowDown') return { type: 'move', direction: 'down' };
-  if (e.key === 'Enter' && !e.shiftKey) return { type: 'split' };
+  if (e.key === 'Enter') return e.shiftKey ? { type: 'newline' } : { type: 'split' };
   if (e.key === 'Tab') return { type: 'nav', direction: e.shiftKey ? 'prev' : 'next' };
   return { type: 'none' };
 }

@@ -16,8 +16,8 @@ function ev(
 test('Enter (no shift) splits', () => {
   expect(classifyCueKeydown(ev({ key: 'Enter' }), false)).toEqual({ type: 'split' });
 });
-test('Shift+Enter is none (falls through to a newline)', () => {
-  expect(classifyCueKeydown(ev({ key: 'Enter', shiftKey: true }), false)).toEqual({ type: 'none' });
+test('Shift+Enter is a newline action (CueRow inserts the ass \\N hard break, not a literal newline)', () => {
+  expect(classifyCueKeydown(ev({ key: 'Enter', shiftKey: true }), false)).toEqual({ type: 'newline' });
 });
 test('Tab navigates next, Shift+Tab navigates previous', () => {
   expect(classifyCueKeydown(ev({ key: 'Tab' }), false)).toEqual({ type: 'nav', direction: 'next' });
