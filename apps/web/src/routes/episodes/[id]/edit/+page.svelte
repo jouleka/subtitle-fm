@@ -87,9 +87,11 @@
     if (!provider) return;
     // Blur the source textarea first: the CueRow sync-$effect only repaints cue.text when
     // the field isn't the activeElement, so the shrunk source text needs the blur to paint.
-    (document.activeElement as HTMLElement | null)?.blur();
+    const source = document.activeElement as HTMLElement | null;
+    source?.blur();
     const res = splitCue(provider.document, id, caretOffset);
     if (res.ok) focusCueText(res.newCueId, 0);
+    else source?.focus(); // rejected (caret at edge / too short) — restore focus, don't strand the user
   }
 
   function handleMoveCue(id: string, direction: "up" | "down") {
