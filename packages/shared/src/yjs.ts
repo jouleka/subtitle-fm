@@ -265,6 +265,88 @@ export function toggleCueNeedsReview(doc: Y.Doc, cueId: string, value: boolean):
   return changed;
 }
 
+// Keep orderIndex == array index after a structural mutation. The change-guard skips
+// the unchanged prefix, but an insert/move shifts the entire tail, so this rewrites
+// O(tail-length) orderIndex fields per op — accepted (cue counts are modest).
+function renumberOrderIndex(yArr: Y.Array<Y.Map<unknown>>): void {
+  for (let i = 0; i < yArr.length; i++) {
+    const m = yArr.get(i);
+    if ((m?.get("orderIndex") as number | undefined) !== i) m!.set("orderIndex", i);
+  }
+}
+
+export type SplitResult =
+  | { ok: true; newCueId: string }
+  | { ok: false; reason: "not-found" | "empty-half" | "too-short" };
+
+/**
+ * Split a cue at the caret into two non-empty cues inside one transaction
+ * ("sfm-51-split"). Time divides proportionally to the caret, clamped so each
+ * half is >= MIN_CUE_DURATION_MS. The new (second) half inherits needsReview so a
+ * review-flagged cue can't be split past the publish gate.
+ */
+export function splitCue(doc: Y.Doc, cueId: string, caretOffset: number): SplitResult {
+  let result: SplitResult = { ok: false, reason: "not-found" };
+
+  doc.transact(() => {
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+
+    let idx = -1;
+    for (let i = 0; i < yArr.length; i++) {
+      if ((yArr.get(i)?.get("id") as string | undefined) === cueId) { idx = i; break; }
+    }
+    if (idx < 0) { result = { ok: false, reason: "not-found" }; return; }
+
+    const target = yArr.get(idx)!;
+    const yText = target.get("text") as Y.Text | undefined;
+    if (!yText) { result = { ok: false, reason: "not-found" }; return; }
+
+    const full = yText.toString();
+    const len = full.length;
+
+    let cut = Math.max(0, Math.min(len, Math.floor(caretOffset)));
+    if (cut > 0 && cut < len && isLowSurrogate(full.charCodeAt(cut)) && isHighSurrogate(full.charCodeAt(cut - 1))) {
+      cut -= 1;
+    }
+    if (cut <= 0 || cut >= len) { result = { ok: false, reason: "empty-half" }; return; }
+
+    const startMs = target.get("startMs") as number;
+    const endMs = target.get("endMs") as number;
+    const dur = endMs - startMs;
+    if (dur < 2 * MIN_CUE_DURATION_MS) { result = { ok: false, reason: "too-short" }; return; }
+
+    const rawBoundary = startMs + Math.round((dur * cut) / len);
+    const boundary = Math.max(startMs + MIN_CUE_DURATION_MS, Math.min(endMs - MIN_CUE_DURATION_MS, rawBoundary));
+
+    const postText = full.slice(cut);
+
+    const newId = crypto.randomUUID();
+    // MUST mirror every cue field cueMapToLive reads — adding a cue field requires updating this.
+    const newMap = new Y.Map<unknown>();
+    newMap.set("id", newId);
+    newMap.set("orderIndex", idx + 1);
+    newMap.set("startMs", boundary);
+    newMap.set("endMs", endMs);
+    newMap.set("rawOverrideTags", "");
+    newMap.set("styleName", (target.get("styleName") as string | undefined) ?? "Default");
+    newMap.set("speakerId", (target.get("speakerId") as string | null | undefined) ?? null);
+    newMap.set("confidence", null);
+    newMap.set("needsReview", Boolean(target.get("needsReview")));
+    const newText = new Y.Text();
+    newText.insert(0, postText);
+    newMap.set("text", newText);
+
+    yText.delete(cut, len - cut);
+    target.set("endMs", boundary);
+    yArr.insert(idx + 1, [newMap]);
+    renumberOrderIndex(yArr);
+
+    result = { ok: true, newCueId: newId };
+  }, "sfm-51-split");
+
+  return result;
+}
+
 /**
  * Decode a stored Y.Doc update (snapshots.yjsState bytes) into LiveCue[] — the
  * authoritative cue state for server-side publish.

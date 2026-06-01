@@ -9,6 +9,7 @@ import {
   liveCuesFromDoc,
   liveCuesFromSnapshot,
   retimeCue,
+  splitCue,
   toggleCueNeedsReview,
   type CueSeed,
 } from "./yjs";
@@ -311,4 +312,103 @@ describe("liveCuesFromSnapshot", () => {
     expect(cues.map((c) => c.text)).toEqual(["one", "two"]);
     expect(cues.map((c) => c.needsReview)).toEqual([true, false]);
   });
+});
+
+// --- SFM-51 splitCue (reconcile mkDoc/mkSeed with any existing helper) ---
+function mkSeed(
+  over: Partial<CueSeed> & { id: string; orderIndex: number; startMs: number; endMs: number; text: string },
+): CueSeed {
+  return { rawOverrideTags: "", styleName: "Default", speakerId: null, confidence: null, needsReview: false, ...over };
+}
+function mkDoc(seeds: CueSeed[]): Y.Doc {
+  const doc = new Y.Doc();
+  hydrateCuesIntoDoc(doc, seeds);
+  return doc;
+}
+
+test("splitCue divides text at the caret and the time range proportionally so the halves abut", () => {
+  const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1100, text: "hello world" })]);
+  const res = splitCue(doc, "c1", 5);
+  expect(res.ok).toBe(true);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues.map((c) => c.text)).toEqual(["hello", " world"]);
+  expect(cues[0].startMs).toBe(0);
+  expect(cues[0].endMs).toBe(500); // round(1100 * 5/11)
+  expect(cues[1].startMs).toBe(500);
+  expect(cues[1].endMs).toBe(1100);
+  expect(cues[0].endMs).toBe(cues[1].startMs);
+  expect(cues.map((c) => c.orderIndex)).toEqual([0, 1]);
+  if (res.ok) expect(cues[1].id).toBe(res.newCueId);
+});
+
+test("splitCue keeps the cue list sorted by startMs (retimeCue's neighbour invariant holds)", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "alpha beta" }),
+    mkSeed({ id: "c2", orderIndex: 1, startMs: 1000, endMs: 2000, text: "second" }),
+  ]);
+  splitCue(doc, "c1", 5);
+  const starts = liveCuesFromDoc(doc).map((c) => c.startMs);
+  expect(starts).toEqual([...starts].sort((a, b) => a - b));
+});
+
+test("splitCue's new half inherits needsReview so a flagged cue can't be split past the review gate", () => {
+  const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "flagged text", needsReview: true })]);
+  splitCue(doc, "c1", 7);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues[0].needsReview).toBe(true);
+  expect(cues[1].needsReview).toBe(true);
+});
+
+test("splitCue inherits styleName/speakerId and resets confidence on the new half", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "hi there", styleName: "Sign", speakerId: "spk1", confidence: 0.4 }),
+  ]);
+  splitCue(doc, "c1", 2);
+  const nu = liveCuesFromDoc(doc)[1];
+  expect(nu.styleName).toBe("Sign");
+  expect(nu.speakerId).toBe("spk1");
+  expect(nu.confidence).toBeNull();
+});
+
+test("splitCue rejects an empty half (caret at start or end) — no orphan cues without a delete op", () => {
+  const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "word" })]);
+  expect(splitCue(doc, "c1", 0)).toEqual({ ok: false, reason: "empty-half" });
+  expect(splitCue(doc, "c1", 4)).toEqual({ ok: false, reason: "empty-half" });
+  expect(liveCuesFromDoc(doc).length).toBe(1);
+});
+
+test("splitCue rejects when the cue is too short for two >= MIN_CUE_DURATION_MS halves", () => {
+  const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 150, text: "ab" })]);
+  expect(splitCue(doc, "c1", 1)).toEqual({ ok: false, reason: "too-short" });
+});
+
+test("splitCue returns not-found for an unknown cue id", () => {
+  const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "abc" })]);
+  expect(splitCue(doc, "nope", 1)).toEqual({ ok: false, reason: "not-found" });
+});
+
+test("splitCue snaps a caret inside a surrogate pair so neither half holds a lone surrogate", () => {
+  const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "a\u{1F600}b" })]);
+  const res = splitCue(doc, "c1", 2);
+  expect(res.ok).toBe(true);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues[0].text).toBe("a");
+  expect(cues[1].text).toBe("\u{1F600}b");
+});
+
+test("splitCue renumbers orderIndex to array index", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "one two" }),
+    mkSeed({ id: "c2", orderIndex: 1, startMs: 1000, endMs: 2000, text: "b" }),
+    mkSeed({ id: "c3", orderIndex: 2, startMs: 2000, endMs: 3000, text: "c" }),
+  ]);
+  splitCue(doc, "c1", 3);
+  expect(liveCuesFromDoc(doc).map((c) => c.orderIndex)).toEqual([0, 1, 2, 3]);
+});
+
+test("splitCue's new cue Y.Map has the same field set as a seeded cue (guards field-drift)", () => {
+  const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "left right" })]);
+  splitCue(doc, "c1", 4);
+  const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+  expect(new Set(yArr.get(1)!.keys())).toEqual(new Set(yArr.get(0)!.keys()));
 });
