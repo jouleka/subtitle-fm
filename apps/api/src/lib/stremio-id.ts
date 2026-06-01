@@ -18,10 +18,12 @@ export function parseStremioSubtitleId(type: string, id: string): ParsedStremioS
   if (parts.length < 3) return null;
   const episode = Number(parts[parts.length - 1]);
   if (!Number.isInteger(episode) || episode < 0) return null;
-  if (parts[0].startsWith('tt')) return { source: 'imdb', externalId: parts[0], episode };
-  if (parts[0] === 'kitsu' || parts[0] === 'mal') {
-    if (!parts[1]) return null;
-    return { source: parts[0], externalId: parts[1], episode };
+  const prefix = parts[0]!;
+  if (prefix.startsWith('tt')) return { source: 'imdb', externalId: prefix, episode };
+  if (prefix === 'kitsu' || prefix === 'mal') {
+    const externalId = parts[1];
+    if (!externalId) return null;
+    return { source: prefix, externalId, episode };
   }
   return null;
 }

@@ -11,7 +11,7 @@ import { liveCuesFromSnapshot, type LiveCue } from '@subtitle-fm/shared/yjs';
 import { serializeAss, defaultParsedAss, toSrt, toVtt } from '@subtitle-fm/ass';
 import { log } from '../lib/log';
 import { requireSession, type AuthVariables } from '../lib/session';
-import { putObject } from '../lib/r2';
+import { putObject, presignGet } from '../lib/r2';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
@@ -59,6 +59,18 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .where(eq(schema.cues.episodeId, id))
       .orderBy(asc(schema.cues.orderIndex));
     return c.json({ cues: rows });
+  })
+  .get('/:id/subtitle.srt', async (c) => {
+    const id = c.req.param('id');
+    const [ep] = await db
+      .select({ id: schema.episodes.id, status: schema.episodes.status })
+      .from(schema.episodes)
+      .where(eq(schema.episodes.id, id))
+      .limit(1);
+    if (!ep) return c.json({ error: 'episode_not_found' }, 404);
+    if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
+    const url = await presignGet({ bucket: 'media', key: `subtitles/${id}/published.srt` });
+    return c.redirect(url, 302);
   })
   .post('/:id/publish', requireSession, async (c) => {
     const id = c.req.param('id') as string;
