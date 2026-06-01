@@ -155,7 +155,7 @@ const ISO_639_1_TO_2: Record<string, string> = {
   'sn': 'sna', // Shona
   'so': 'som', // Somali
   'sq': 'alb', // Albanian (B=alb, T=sqi)
-  'sr': 'scc', // Serbian (B=scc, T=srp)
+  'sr': 'srp', // Serbian (scc was the /B code but was withdrawn in 2008; srp is the surviving code)
   'ss': 'ssw', // Swati
   'st': 'sot', // Southern Sotho
   'su': 'sun', // Sundanese
