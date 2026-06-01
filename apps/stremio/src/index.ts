@@ -14,9 +14,19 @@ const manifest = {
 
 const builder = new addonBuilder(manifest);
 
+const API_URL = process.env.API_PUBLIC_URL ?? 'http://localhost:3000';
+
 builder.defineSubtitlesHandler(async ({ id, type }: { id: string; type: string }) => {
-  console.log(`subtitle request: type=${type} id=${id}`);
-  return { subtitles: [] };
+  try {
+    const res = await fetch(
+      `${API_URL}/stremio/subtitles/${encodeURIComponent(type)}/${encodeURIComponent(id)}`,
+    );
+    if (!res.ok) return { subtitles: [] };
+    const body = (await res.json()) as { subtitles?: unknown[] };
+    return { subtitles: body.subtitles ?? [] };
+  } catch {
+    return { subtitles: [] };
+  }
 });
 
 const port = Number(process.env.STREMIO_PORT ?? 7000);
