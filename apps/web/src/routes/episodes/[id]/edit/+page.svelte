@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from "svelte";
+  import { onMount, tick } from "svelte";
   import type { PageData } from "./$types";
   import { HocuspocusProvider } from "@hocuspocus/provider";
   import JASSUB from "jassub";
@@ -9,6 +9,8 @@
     retimeCue,
     applyCueTextEdit,
     toggleCueNeedsReview,
+    splitCue,
+    moveCue,
     type LiveCue,
   } from "@subtitle-fm/shared/yjs";
   import { defaultParsedAss, serializeAss } from "@subtitle-fm/ass";
@@ -64,6 +66,43 @@
     const end = el.selectionEnd ?? start;
     el.setRangeText(targetText, start, end, "end");
     el.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  async function focusCueText(cueId: string, offset?: number) {
+    // Relies on Yjs observeDeep firing `refresh` synchronously inside the split/move
+    // transaction (it does), so `cues` is already updated before this flush. The second
+    // tick is a defensive retry against a missed first flush (focus is a success criterion).
+    await tick();
+    let el = document.querySelector<HTMLTextAreaElement>(`[data-cue-id="${cueId}"] .cue-text`);
+    if (!el) {
+      await tick();
+      el = document.querySelector<HTMLTextAreaElement>(`[data-cue-id="${cueId}"] .cue-text`);
+    }
+    if (!el) return;
+    el.focus();
+    if (offset != null) el.setSelectionRange(offset, offset);
+  }
+
+  function handleSplitCue(id: string, caretOffset: number) {
+    if (!provider) return;
+    // Blur the source textarea first: the CueRow sync-$effect only repaints cue.text when
+    // the field isn't the activeElement, so the shrunk source text needs the blur to paint.
+    (document.activeElement as HTMLElement | null)?.blur();
+    const res = splitCue(provider.document, id, caretOffset);
+    if (res.ok) focusCueText(res.newCueId, 0);
+  }
+
+  function handleMoveCue(id: string, direction: "up" | "down") {
+    if (!provider) return;
+    const res = moveCue(provider.document, id, direction);
+    if (res.ok) focusCueText(id);
+  }
+
+  function handleNavCue(id: string, direction: "prev" | "next") {
+    const i = cues.findIndex((c) => c.id === id);
+    if (i < 0) return;
+    const target = cues[i + (direction === "next" ? 1 : -1)];
+    if (target) focusCueText(target.id);
   }
 
   // Initial paint from SSR REST data; Y.Doc takes over once connected.
@@ -376,6 +415,9 @@
                 ? retimeCue(provider.document, id, s, e)
                 : { ok: false, reason: "not-found" }}
             onClearReview={(id) => { if (provider) toggleCueNeedsReview(provider.document, id, false); }}
+            onSplitCue={handleSplitCue}
+            onMoveCue={handleMoveCue}
+            onNavCue={handleNavCue}
           />
         {/each}
         {#if cues.length === 0}
