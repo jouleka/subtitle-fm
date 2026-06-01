@@ -7,6 +7,7 @@ import { app } from "../index";
 const SHOW = "sfm59-show";
 const EP_PUB = "59999999-0000-0000-0000-000000000001";
 const EP_UNPUB = "59999999-0000-0000-0000-000000000002";
+const EP_JA = "59999999-0000-0000-0000-000000000007";
 
 beforeAll(async () => {
   await db.delete(schema.episodes).where(eq(schema.episodes.showId, SHOW));
@@ -14,6 +15,7 @@ beforeAll(async () => {
   await db.insert(schema.shows).values({ id: SHOW, title: "SFM-59", slug: "sfm-59", kitsuId: "kit59", imdbId: "tt59", malId: "mal59" });
   await db.insert(schema.episodes).values({ id: EP_PUB, showId: SHOW, number: 5, title: "pub", status: "published" });
   await db.insert(schema.episodes).values({ id: EP_UNPUB, showId: SHOW, number: 6, title: "unpub", status: "ready_for_edit" });
+  await db.insert(schema.episodes).values({ id: EP_JA, showId: SHOW, number: 7, title: "ja", status: "published", targetLanguage: "ja" });
 });
 afterAll(async () => {
   await db.delete(schema.episodes).where(eq(schema.episodes.showId, SHOW));
@@ -46,5 +48,12 @@ describe("GET /stremio/subtitles/:type/:id", () => {
   test("a movie type yields no subtitles", async () => {
     const res = await app.request(`/stremio/subtitles/movie/${encodeURIComponent("tt59")}`);
     expect(((await res.json()) as { subtitles: unknown[] }).subtitles).toEqual([]);
+  });
+  test("maps the episode targetLanguage to ISO-639-2 (ja -> jpn)", async () => {
+    const res = await app.request(`/stremio/subtitles/series/${encodeURIComponent("kitsu:kit59:7")}`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { subtitles: { lang: string }[] };
+    expect(body.subtitles.length).toBe(1);
+    expect(body.subtitles[0]!.lang).toBe("jpn");
   });
 });

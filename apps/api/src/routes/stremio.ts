@@ -3,6 +3,7 @@ import { and, eq } from 'drizzle-orm';
 import { schema } from '@subtitle-fm/db';
 import { db } from '../lib/db';
 import { parseStremioSubtitleId } from '../lib/stremio-id';
+import { toIso639_2 } from '../lib/iso639';
 
 export const stremio = new Hono().get('/subtitles/:type/:id', async (c) => {
   const parsed = parseStremioSubtitleId(c.req.param('type'), c.req.param('id'));
@@ -22,7 +23,7 @@ export const stremio = new Hono().get('/subtitles/:type/:id', async (c) => {
   if (!show) return c.json({ subtitles: [] });
 
   const [ep] = await db
-    .select({ id: schema.episodes.id, status: schema.episodes.status })
+    .select({ id: schema.episodes.id, status: schema.episodes.status, targetLanguage: schema.episodes.targetLanguage })
     .from(schema.episodes)
     .where(and(eq(schema.episodes.showId, show.id), eq(schema.episodes.number, parsed.episode)))
     .limit(1);
@@ -30,6 +31,6 @@ export const stremio = new Hono().get('/subtitles/:type/:id', async (c) => {
 
   const base = process.env.API_PUBLIC_URL ?? new URL(c.req.url).origin;
   return c.json({
-    subtitles: [{ id: `sfm-${ep.id}`, url: `${base}/episodes/${ep.id}/subtitle.srt`, lang: 'eng' }],
+    subtitles: [{ id: `sfm-${ep.id}`, url: `${base}/episodes/${ep.id}/subtitle.srt`, lang: toIso639_2(ep.targetLanguage) }],
   });
 });
