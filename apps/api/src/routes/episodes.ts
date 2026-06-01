@@ -8,7 +8,7 @@ import { db } from '../lib/db';
 import { preprocessQueue } from '../lib/queue';
 import { JOB_OPTS_DEFAULT, type PreprocessJob } from '@subtitle-fm/shared';
 import { liveCuesFromSnapshot, type LiveCue } from '@subtitle-fm/shared/yjs';
-import { serializeAss, defaultParsedAss } from '@subtitle-fm/ass';
+import { serializeAss, defaultParsedAss, toSrt, toVtt } from '@subtitle-fm/ass';
 import { log } from '../lib/log';
 import { requireSession, type AuthVariables } from '../lib/session';
 import { putObject } from '../lib/r2';
@@ -21,6 +21,13 @@ const createEpisodeSchema = z.object({
   sourceLanguage: z.string().default('ja'),
   targetLanguage: z.string().default('en'),
 });
+
+// Canonical published-artifact keys for an episode. One scheme, two return
+// sites (idempotent re-publish + fresh publish) — keep them from drifting.
+function publishedKeys(id: string) {
+  const base = `subtitles/${id}/published`;
+  return { ass: `${base}.ass`, srt: `${base}.srt`, vtt: `${base}.vtt` };
+}
 
 export const episodes = new Hono<{ Variables: AuthVariables }>()
   .get('/', async (c) => {
@@ -64,8 +71,10 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
     // Already published: idempotent no-op. Do NOT re-serialize/overwrite the
     // canonical artifact with possibly-newer edited state. (A failed status flip
     // leaves status non-published, so a genuine retry still completes below.)
-    if (ep.status === 'published')
-      return c.json({ status: 'published', key: `subtitles/${id}/published.ass` });
+    if (ep.status === 'published') {
+      const keys = publishedKeys(id);
+      return c.json({ status: 'published', key: keys.ass, keys });
+    }
     if (!['ready_for_edit', 'in_review'].includes(ep.status))
       return c.json({ error: 'not_publishable', currentStatus: ep.status }, 409);
 
@@ -94,16 +103,23 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
     const unreviewed = cues.filter((cue) => cue.needsReview).length;
     if (unreviewed > 0) return c.json({ error: 'unreviewed_cues', count: unreviewed }, 409);
 
-    let ass: string;
+    const keys = publishedKeys(id);
+
+    let ass: string, srt: string, vtt: string;
     try {
-      ass = serializeAss(defaultParsedAss(cues));
+      const parsed = defaultParsedAss(cues);
+      ass = serializeAss(parsed); // throws on styleName/speaker comma or literal newline → 422 before srt/vtt or any upload
+      srt = toSrt(parsed);
+      vtt = toVtt(parsed);
     } catch (e) {
       return c.json({ error: 'serialize_failed', detail: (e as Error).message }, 422);
     }
 
-    const key = `subtitles/${id}/published.ass`;
     try {
-      await putObject('media', key, ass, 'text/plain; charset=utf-8'); // artifact before the status flip
+      // artifacts before the status flip; any failure leaves status unpublished (retry-safe)
+      await putObject('media', keys.ass, ass, 'text/plain; charset=utf-8');
+      await putObject('media', keys.srt, srt, 'application/x-subrip; charset=utf-8');
+      await putObject('media', keys.vtt, vtt, 'text/vtt; charset=utf-8');
     } catch (e) {
       return c.json({ error: 'r2_upload_failed', detail: (e as Error).message }, 502);
     }
@@ -111,7 +127,7 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
     const result = await advanceEpisodeStatus(db, id, { from: ['ready_for_edit', 'in_review'], to: 'published' });
     if (!result.advanced && result.currentStatus !== 'published')
       return c.json({ error: 'not_publishable', currentStatus: result.currentStatus }, 409);
-    return c.json({ status: 'published', key });
+    return c.json({ status: 'published', key: keys.ass, keys });
   })
   .post('/', requireSession, zValidator('json', createEpisodeSchema), async (c) => {
     const input = c.req.valid('json');

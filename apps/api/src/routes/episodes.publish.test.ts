@@ -80,18 +80,27 @@ describe("POST /episodes/:id/publish", () => {
     expect(((await res.json()) as { error: string }).error).toBe("unreviewed_cues");
     expect(putObjectMock).toHaveBeenCalledTimes(0);
   });
-  test("200 publishes a clean episode: .ass uploaded + status published (intent: the Phase 2 exit gate)", async () => {
+  test("200 publishes a clean episode: .ass/.srt/.vtt uploaded + status published (intent: the Phase 2 exit gate)", async () => {
     authed();
     const res = await app.request(`/episodes/${EP_CLEAN}/publish`, { method: "POST" });
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { status: string; key: string };
+    const body = (await res.json()) as { status: string; key: string; keys: { ass: string; srt: string; vtt: string } };
     expect(body.status).toBe("published");
-    expect(body.key).toBe(`subtitles/${EP_CLEAN}/published.ass`);
-    expect(putObjectMock).toHaveBeenCalledTimes(1);
-    const ass = (putObjectMock.mock.calls[0] as unknown[])[2] as string;
-    expect(ass).toContain("[Events]");
-    expect(ass).toContain("Dialogue: ");
-    expect((putObjectMock.mock.calls[0] as unknown[])[3]).toBe("text/plain; charset=utf-8");
+    const base = `subtitles/${EP_CLEAN}/published`;
+    expect(body.key).toBe(`${base}.ass`);
+    expect(body.keys).toEqual({ ass: `${base}.ass`, srt: `${base}.srt`, vtt: `${base}.vtt` });
+    expect(putObjectMock).toHaveBeenCalledTimes(3);
+    // putObject(bucket, key, body, contentType) → index the three uploads by key (order-independent).
+    const byKey = Object.fromEntries(
+      (putObjectMock.mock.calls as unknown[][]).map((c) => [c[1] as string, { body: c[2] as string, ct: c[3] as string }]),
+    ) as Record<string, { body: string; ct: string }>;
+    expect(byKey[`${base}.ass`]!.body).toContain("[Events]");
+    expect(byKey[`${base}.ass`]!.body).toContain("Dialogue: ");
+    expect(byKey[`${base}.ass`]!.ct).toBe("text/plain; charset=utf-8");
+    expect(byKey[`${base}.srt`]!.body.startsWith("1\n")).toBe(true);
+    expect(byKey[`${base}.srt`]!.ct).toBe("application/x-subrip; charset=utf-8");
+    expect(byKey[`${base}.vtt`]!.body.startsWith("WEBVTT")).toBe(true);
+    expect(byKey[`${base}.vtt`]!.ct).toBe("text/vtt; charset=utf-8");
     const [ep] = await db.select({ status: schema.episodes.status }).from(schema.episodes).where(eq(schema.episodes.id, EP_CLEAN)).limit(1);
     expect(ep!.status).toBe("published");
   });
@@ -111,7 +120,10 @@ describe("POST /episodes/:id/publish", () => {
     authed();
     const res = await app.request(`/episodes/${EP_CLEAN}/publish`, { method: "POST" });
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { status: string }).status).toBe("published");
+    const body = (await res.json()) as { status: string; key: string; keys: { ass: string; srt: string; vtt: string } };
+    expect(body.status).toBe("published");
+    const base = `subtitles/${EP_CLEAN}/published`;
+    expect(body.keys).toEqual({ ass: `${base}.ass`, srt: `${base}.srt`, vtt: `${base}.vtt` });
     expect(putObjectMock).toHaveBeenCalledTimes(0); // early-return skips re-upload
   });
 });
