@@ -118,6 +118,12 @@
     if (res.ok) focusCueText(res.newCueId, 0);
   }
 
+  function handleInsertCueAfter(id: string) {
+    if (!provider) return;
+    const res = insertCue(provider.document, id);
+    if (res.ok) focusCueText(res.newCueId, 0); // focus the new empty cue, ready to type
+  }
+
   function handleDeleteCue(id: string) {
     if (!provider) return;
     if (!confirm("Delete this cue?")) return;
@@ -442,6 +448,7 @@
             onSplitCue={handleSplitCue}
             onMoveCue={handleMoveCue}
             onNavCue={handleNavCue}
+            onInsertCue={handleInsertCueAfter}
             onDeleteCue={handleDeleteCue}
           />
         {/each}

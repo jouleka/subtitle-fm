@@ -15,6 +15,7 @@
     onSplitCue,
     onMoveCue,
     onNavCue,
+    onInsertCue,
     onDeleteCue,
   }: {
     cue: LiveCue;
@@ -26,6 +27,7 @@
     onSplitCue: (id: string, caretOffset: number) => void;
     onMoveCue: (id: string, direction: "up" | "down") => void;
     onNavCue: (id: string, direction: "prev" | "next") => void;
+    onInsertCue: (id: string) => void;
     onDeleteCue: (id: string) => void;
   } = $props();
 
@@ -100,11 +102,14 @@
   }
 
   function handleTextKeydown(e: KeyboardEvent) {
-    const action = classifyCueKeydown(e, composing); // `composing` is the existing IME flag
+    const caretAtEnd = textEl ? textEl.selectionStart === textEl.value.length : false;
+    const action = classifyCueKeydown(e, composing, caretAtEnd); // `composing` is the existing IME flag
     if (action.type === "none") return; // normal typing
     e.preventDefault();
     if (action.type === "split") {
       if (textEl) onSplitCue(cue.id, textEl.selectionStart ?? textEl.value.length);
+    } else if (action.type === "insert") {
+      onInsertCue(cue.id);
     } else if (action.type === "move") {
       onMoveCue(cue.id, action.direction);
     } else if (action.type === "nav") {
