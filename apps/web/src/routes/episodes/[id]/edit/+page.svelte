@@ -11,6 +11,8 @@
     toggleCueNeedsReview,
     splitCue,
     moveCue,
+    insertCue,
+    deleteCue,
     type LiveCue,
   } from "@subtitle-fm/shared/yjs";
   import { defaultParsedAss, serializeAss } from "@subtitle-fm/ass";
@@ -105,6 +107,25 @@
     if (i < 0) return;
     const target = cues[i + (direction === "next" ? 1 : -1)];
     if (target) focusCueText(target.id);
+  }
+
+  function handleAddCue() {
+    if (!provider) return;
+    const afterId = focusedCueId && cues.some((c) => c.id === focusedCueId) ? focusedCueId : null;
+    // No explicit blur() needed (unlike handleSplitCue): activating this footer button already
+    // blurs the focused cue field, so a carved anchor's time input repaints via CueRow's sync $effect.
+    const res = insertCue(provider.document, afterId);
+    if (res.ok) focusCueText(res.newCueId, 0);
+  }
+
+  function handleDeleteCue(id: string) {
+    if (!provider) return;
+    if (!confirm("Delete this cue?")) return;
+    const i = cues.findIndex((c) => c.id === id);
+    if (i < 0) return;
+    const neighbour = cues[i - 1] ?? cues[i + 1] ?? null; // prefer previous, else next (ids from the pre-delete list)
+    const res = deleteCue(provider.document, id);
+    if (res.ok && neighbour) focusCueText(neighbour.id);
   }
 
   // Initial paint from SSR REST data; Y.Doc takes over once connected.
@@ -421,12 +442,14 @@
             onSplitCue={handleSplitCue}
             onMoveCue={handleMoveCue}
             onNavCue={handleNavCue}
+            onDeleteCue={handleDeleteCue}
           />
         {/each}
         {#if cues.length === 0}
           <li class="empty">No cues yet.</li>
         {/if}
       </ol>
+        <button type="button" class="add-cue-btn" onclick={handleAddCue}>+ Add cue</button>
     </section>
 
     <section class="pane pane-waveform" class:tab-active={activeTab === "waveform"}>
@@ -548,6 +571,15 @@
   .status-placeholder {
     padding: 2rem;
     font-family: system-ui;
+  }
+  .add-cue-btn {
+    margin: 0.5rem;
+    padding: 0.3rem 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #f7f7f7;
+    cursor: pointer;
+    font: inherit;
   }
 
   @media (min-width: 1024px) {

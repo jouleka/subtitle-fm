@@ -15,6 +15,7 @@
     onSplitCue,
     onMoveCue,
     onNavCue,
+    onDeleteCue,
   }: {
     cue: LiveCue;
     onTextEdit: (id: string, newText: string) => void;
@@ -25,6 +26,7 @@
     onSplitCue: (id: string, caretOffset: number) => void;
     onMoveCue: (id: string, direction: "up" | "down") => void;
     onNavCue: (id: string, direction: "prev" | "next") => void;
+    onDeleteCue: (id: string) => void;
   } = $props();
 
   let textEl: HTMLTextAreaElement | undefined = $state();
@@ -210,6 +212,7 @@
       {/each}
     </span>
   {/if}
+  <button type="button" class="cue-delete" aria-label={`Delete cue ${cue.orderIndex + 1}`} onclick={() => onDeleteCue(cue.id)}>🗑</button>
 </li>
 
 <style>
@@ -318,5 +321,17 @@
     border-radius: 999px;
     color: white;
     white-space: nowrap;
+  }
+  .cue-delete {
+    align-self: center;
+    border: none;
+    background: none;
+    cursor: pointer;
+    font-size: 0.8rem;
+    opacity: 0.5;
+    padding: 0 0.2rem;
+  }
+  .cue-delete:hover {
+    opacity: 1;
   }
 </style>
