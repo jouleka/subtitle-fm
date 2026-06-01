@@ -5,7 +5,10 @@ import {
   computeTextDiff,
   CUES_ARRAY_KEY,
   cueMapToLive,
+  DEFAULT_NEW_CUE_MS,
+  deleteCue,
   hydrateCuesIntoDoc,
+  insertCue,
   liveCuesFromDoc,
   liveCuesFromSnapshot,
   moveCue,
@@ -333,13 +336,13 @@ test("splitCue divides text at the caret and the time range proportionally so th
   expect(res.ok).toBe(true);
   const cues = liveCuesFromDoc(doc);
   expect(cues.map((c) => c.text)).toEqual(["hello", " world"]);
-  expect(cues[0].startMs).toBe(0);
-  expect(cues[0].endMs).toBe(500); // round(1100 * 5/11)
-  expect(cues[1].startMs).toBe(500);
-  expect(cues[1].endMs).toBe(1100);
-  expect(cues[0].endMs).toBe(cues[1].startMs);
+  expect(cues[0]!.startMs).toBe(0);
+  expect(cues[0]!.endMs).toBe(500); // round(1100 * 5/11)
+  expect(cues[1]!.startMs).toBe(500);
+  expect(cues[1]!.endMs).toBe(1100);
+  expect(cues[0]!.endMs).toBe(cues[1]!.startMs);
   expect(cues.map((c) => c.orderIndex)).toEqual([0, 1]);
-  if (res.ok) expect(cues[1].id).toBe(res.newCueId);
+  if (res.ok) expect(cues[1]!.id).toBe(res.newCueId);
 });
 
 test("splitCue keeps the cue list sorted by startMs (retimeCue's neighbour invariant holds)", () => {
@@ -356,8 +359,8 @@ test("splitCue's new half inherits needsReview so a flagged cue can't be split p
   const doc = mkDoc([mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "flagged text", needsReview: true })]);
   splitCue(doc, "c1", 7);
   const cues = liveCuesFromDoc(doc);
-  expect(cues[0].needsReview).toBe(true);
-  expect(cues[1].needsReview).toBe(true);
+  expect(cues[0]!.needsReview).toBe(true);
+  expect(cues[1]!.needsReview).toBe(true);
 });
 
 test("splitCue inherits styleName/speakerId and resets confidence on the new half", () => {
@@ -365,7 +368,7 @@ test("splitCue inherits styleName/speakerId and resets confidence on the new hal
     mkSeed({ id: "c1", orderIndex: 0, startMs: 0, endMs: 1000, text: "hi there", styleName: "Sign", speakerId: "spk1", confidence: 0.4 }),
   ]);
   splitCue(doc, "c1", 2);
-  const nu = liveCuesFromDoc(doc)[1];
+  const nu = liveCuesFromDoc(doc)[1]!;
   expect(nu.styleName).toBe("Sign");
   expect(nu.speakerId).toBe("spk1");
   expect(nu.confidence).toBeNull();
@@ -393,8 +396,8 @@ test("splitCue snaps a caret inside a surrogate pair so neither half holds a lon
   const res = splitCue(doc, "c1", 2);
   expect(res.ok).toBe(true);
   const cues = liveCuesFromDoc(doc);
-  expect(cues[0].text).toBe("a");
-  expect(cues[1].text).toBe("\u{1F600}b");
+  expect(cues[0]!.text).toBe("a");
+  expect(cues[1]!.text).toBe("\u{1F600}b");
 });
 
 test("splitCue renumbers orderIndex to array index", () => {
@@ -501,4 +504,144 @@ test("moveCue's clone Y.Map has the same field set as a seeded cue (guards field
   moveCue(doc, "a", "down");
   const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
   expect(new Set(yArr.get(1)!.keys())).toEqual(new Set(yArr.get(0)!.keys()));
+});
+
+// --- SFM-56 insertCue ---
+test("insertCue appends after the last cue into open time, leaving the anchor unchanged", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A", styleName: "Sign", speakerId: "spk1" }),
+  ]);
+  const res = insertCue(doc, "a");
+  expect(res.ok).toBe(true);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues.length).toBe(2);
+  expect(cues[0]!.id).toBe("a");
+  expect(cues[0]!.startMs).toBe(0);
+  expect(cues[0]!.endMs).toBe(1000); // anchor unchanged
+  expect(cues[1]!.startMs).toBe(1000);
+  expect(cues[1]!.endMs).toBe(1000 + DEFAULT_NEW_CUE_MS);
+  expect(cues[1]!.text).toBe("");
+  expect(cues[1]!.needsReview).toBe(true);
+  expect(cues[1]!.styleName).toBe("Sign");
+  expect(cues[1]!.speakerId).toBe("spk1");
+  expect(cues[1]!.confidence).toBeNull();
+  expect(cues.map((c) => c.orderIndex)).toEqual([0, 1]);
+  if (res.ok) expect(cues[1]!.id).toBe(res.newCueId);
+});
+
+test("insertCue fills a gap up to the next cue (clamped to nextStart), not shrinking the anchor", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1500, endMs: 2500, text: "B" }), // 500ms gap after a
+  ]);
+  const res = insertCue(doc, "a");
+  expect(res.ok).toBe(true);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues[0]!.endMs).toBe(1000); // anchor unchanged
+  expect(cues[1]!.startMs).toBe(1000);
+  expect(cues[1]!.endMs).toBe(1500); // clamped to next.startMs (gap < DEFAULT)
+  expect(cues[2]!.id).toBe("b"); // next untouched
+});
+
+test("insertCue carves the anchor's back half when it abuts the next cue", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }), // abuts a
+  ]);
+  const res = insertCue(doc, "a");
+  expect(res.ok).toBe(true);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues[0]!.id).toBe("a");
+  expect(cues[0]!.endMs).toBe(500); // carved to midpoint
+  expect(cues[1]!.startMs).toBe(500);
+  expect(cues[1]!.endMs).toBe(1000);
+  expect(cues[2]!.id).toBe("b");
+  expect(cues[2]!.startMs).toBe(1000); // next untouched
+  expect(cues[2]!.endMs).toBe(2000);
+  const starts = cues.map((c) => c.startMs);
+  expect(starts).toEqual([...starts].sort((x, y) => x - y)); // still sorted by startMs
+});
+
+test("insertCue with null on an empty doc creates the first cue at [0, DEFAULT]", () => {
+  const doc = mkDoc([]);
+  const res = insertCue(doc, null);
+  expect(res.ok).toBe(true);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues.length).toBe(1);
+  expect(cues[0]!.startMs).toBe(0);
+  expect(cues[0]!.endMs).toBe(DEFAULT_NEW_CUE_MS);
+  expect(cues[0]!.text).toBe("");
+  expect(cues[0]!.needsReview).toBe(true);
+  expect(cues[0]!.orderIndex).toBe(0);
+});
+
+test("insertCue with null on a non-empty doc appends after the last cue", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+  ]);
+  insertCue(doc, null);
+  const cues = liveCuesFromDoc(doc);
+  expect(cues.length).toBe(3);
+  expect(cues[2]!.startMs).toBe(2000);
+  expect(cues[2]!.endMs).toBe(2000 + DEFAULT_NEW_CUE_MS);
+});
+
+test("insertCue rejects too-short when the anchor abuts its next neighbour and is under 2x MIN", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 150, text: "A" }), // 150ms < 200
+    mkSeed({ id: "b", orderIndex: 1, startMs: 150, endMs: 1150, text: "B" }), // abuts a
+  ]);
+  expect(insertCue(doc, "a")).toEqual({ ok: false, reason: "too-short" });
+  expect(liveCuesFromDoc(doc).length).toBe(2); // no write
+});
+
+test("insertCue returns not-found for an unknown afterCueId", () => {
+  const doc = mkDoc([mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" })]);
+  expect(insertCue(doc, "nope")).toEqual({ ok: false, reason: "not-found" });
+  expect(liveCuesFromDoc(doc).length).toBe(1);
+});
+
+test("insertCue's new cue Y.Map has the same field set as a seeded cue (guards field-drift)", () => {
+  const doc = mkDoc([mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" })]);
+  insertCue(doc, "a");
+  const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+  expect(new Set(yArr.get(1)!.keys())).toEqual(new Set(yArr.get(0)!.keys()));
+});
+
+test("insertCue renumbers orderIndex to array index", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 2000, endMs: 3000, text: "B" }), // gap so insert-after-a uses open time
+  ]);
+  insertCue(doc, "a");
+  expect(liveCuesFromDoc(doc).map((c) => c.orderIndex)).toEqual([0, 1, 2]);
+});
+
+// --- SFM-56 deleteCue ---
+test("deleteCue removes the cue and renumbers orderIndex, leaving other cues intact", () => {
+  const doc = mkDoc([
+    mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" }),
+    mkSeed({ id: "b", orderIndex: 1, startMs: 1000, endMs: 2000, text: "B" }),
+    mkSeed({ id: "c", orderIndex: 2, startMs: 2000, endMs: 3000, text: "C" }),
+  ]);
+  expect(deleteCue(doc, "b")).toEqual({ ok: true });
+  const cues = liveCuesFromDoc(doc);
+  expect(cues.map((c) => c.id)).toEqual(["a", "c"]);
+  expect(cues.map((c) => c.orderIndex)).toEqual([0, 1]);
+  expect(cues[1]!.startMs).toBe(2000); // c untouched
+  expect(cues[1]!.endMs).toBe(3000);
+  expect(cues[1]!.text).toBe("C");
+});
+
+test("deleteCue can remove the last remaining cue, leaving an empty list", () => {
+  const doc = mkDoc([mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" })]);
+  expect(deleteCue(doc, "a")).toEqual({ ok: true });
+  expect(liveCuesFromDoc(doc).length).toBe(0);
+});
+
+test("deleteCue returns not-found for an unknown id", () => {
+  const doc = mkDoc([mkSeed({ id: "a", orderIndex: 0, startMs: 0, endMs: 1000, text: "A" })]);
+  expect(deleteCue(doc, "nope")).toEqual({ ok: false, reason: "not-found" });
+  expect(liveCuesFromDoc(doc).length).toBe(1);
 });

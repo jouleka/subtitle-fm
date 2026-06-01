@@ -400,6 +400,127 @@ export function moveCue(doc: Y.Doc, cueId: string, direction: "up" | "down"): Mo
   return result;
 }
 
+export const DEFAULT_NEW_CUE_MS = 2000;
+
+export type InsertResult =
+  | { ok: true; newCueId: string }
+  | { ok: false; reason: "not-found" | "too-short" };
+
+/**
+ * Insert a new empty cue after `afterCueId` inside one transaction ("sfm-56-insert").
+ *   - afterCueId === null  -> append after the last cue, or the first cue [0, DEFAULT] if the doc is empty.
+ *   - a valid id           -> insert after it: take the open time [anchorEnd, min(anchorEnd+DEFAULT, nextStart)]
+ *                             when that span is >= MIN_CUE_DURATION_MS; otherwise (anchor abuts next) carve the
+ *                             anchor's back half at the midpoint.
+ *   - an unknown id        -> { ok: false, reason: "not-found" }.
+ * New cue: empty Y.Text, needsReview=true (new content must pass the publish gate), confidence=null,
+ * rawOverrideTags="", inherits styleName/speakerId from the anchor.
+ */
+export function insertCue(doc: Y.Doc, afterCueId: string | null): InsertResult {
+  let result: InsertResult = { ok: false, reason: "not-found" };
+
+  doc.transact(() => {
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+
+    // Resolve the anchor index. null => append (idx = last; -1 when the doc is empty).
+    let idx: number;
+    if (afterCueId === null) {
+      idx = yArr.length - 1;
+    } else {
+      idx = -1;
+      for (let i = 0; i < yArr.length; i++) {
+        if ((yArr.get(i)?.get("id") as string | undefined) === afterCueId) { idx = i; break; }
+      }
+      if (idx < 0) { result = { ok: false, reason: "not-found" }; return; }
+    }
+
+    let newStart: number;
+    let newEnd: number;
+    let styleName = "Default";
+    let speakerId: string | null = null;
+
+    if (idx < 0) {
+      // Empty doc: the first cue.
+      newStart = 0;
+      newEnd = DEFAULT_NEW_CUE_MS;
+    } else {
+      const anchor = yArr.get(idx)!;
+      const anchorStart = anchor.get("startMs") as number;
+      const anchorEnd = anchor.get("endMs") as number;
+      styleName = (anchor.get("styleName") as string | undefined) ?? "Default";
+      speakerId = (anchor.get("speakerId") as string | null | undefined) ?? null;
+
+      const next = idx < yArr.length - 1 ? yArr.get(idx + 1) : undefined;
+      const nextStart = (next?.get("startMs") as number | undefined) ?? Number.MAX_SAFE_INTEGER;
+
+      const openEnd = Math.min(anchorEnd + DEFAULT_NEW_CUE_MS, nextStart);
+      if (openEnd - anchorEnd >= MIN_CUE_DURATION_MS) {
+        // Open time / gap after the anchor — anchor unchanged.
+        newStart = anchorEnd;
+        newEnd = openEnd;
+      } else {
+        // Anchor abuts its next neighbour — carve its back half.
+        const dur = anchorEnd - anchorStart;
+        if (dur < 2 * MIN_CUE_DURATION_MS) { result = { ok: false, reason: "too-short" }; return; }
+        // Midpoint of a duration >= 2*MIN is always in [start+MIN, end-MIN], so no clamp is
+        // needed (unlike splitCue's caret-proportional boundary).
+        const boundary = anchorStart + Math.round(dur / 2);
+        anchor.set("endMs", boundary);
+        newStart = boundary;
+        newEnd = anchorEnd;
+      }
+    }
+
+    const newId = crypto.randomUUID();
+    // MUST mirror every cue field cueMapToLive reads — adding a cue field requires updating this.
+    const newMap = new Y.Map<unknown>();
+    newMap.set("id", newId);
+    newMap.set("orderIndex", idx + 1); // provisional; renumberOrderIndex fixes it (idx=-1 => 0)
+    newMap.set("startMs", newStart);
+    newMap.set("endMs", newEnd);
+    newMap.set("rawOverrideTags", "");
+    newMap.set("styleName", styleName);
+    newMap.set("speakerId", speakerId);
+    newMap.set("confidence", null);
+    newMap.set("needsReview", true);
+    const newText = new Y.Text();
+    newMap.set("text", newText);
+
+    yArr.insert(idx + 1, [newMap]); // idx=-1 => insert at index 0
+    renumberOrderIndex(yArr);
+
+    result = { ok: true, newCueId: newId };
+  }, "sfm-56-insert");
+
+  return result;
+}
+
+export type DeleteResult = { ok: true } | { ok: false; reason: "not-found" };
+
+/**
+ * Delete a cue by id inside one transaction ("sfm-56-delete"). Renumbers orderIndex;
+ * neighbours' times are left as-is (a gap is acceptable). Deleting the last remaining
+ * cue leaves an empty array.
+ */
+export function deleteCue(doc: Y.Doc, cueId: string): DeleteResult {
+  let result: DeleteResult = { ok: false, reason: "not-found" };
+
+  doc.transact(() => {
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+    let idx = -1;
+    for (let i = 0; i < yArr.length; i++) {
+      if ((yArr.get(i)?.get("id") as string | undefined) === cueId) { idx = i; break; }
+    }
+    if (idx < 0) { result = { ok: false, reason: "not-found" }; return; }
+
+    yArr.delete(idx, 1);
+    renumberOrderIndex(yArr);
+    result = { ok: true };
+  }, "sfm-56-delete");
+
+  return result;
+}
+
 /**
  * Decode a stored Y.Doc update (snapshots.yjsState bytes) into LiveCue[] — the
  * authoritative cue state for server-side publish.
