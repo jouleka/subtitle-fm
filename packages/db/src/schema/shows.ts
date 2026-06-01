@@ -16,5 +16,9 @@ export const shows = pgTable(
   },
   (t) => ({
     slugIdx: uniqueIndex('shows_slug_idx').on(t.slug),
+    imdbIdIdx: uniqueIndex('shows_imdb_id_idx').on(t.imdbId),
+    malIdIdx: uniqueIndex('shows_mal_id_idx').on(t.malId),
+    anilistIdIdx: uniqueIndex('shows_anilist_id_idx').on(t.anilistId),
+    kitsuIdIdx: uniqueIndex('shows_kitsu_id_idx').on(t.kitsuId),
   }),
 );

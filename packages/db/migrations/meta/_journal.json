@@ -43,6 +43,13 @@
       "when": 1780333948824,
       "tag": "0005_real_rafael_vega",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1780338979658,
+      "tag": "0006_nosy_preak",
+      "breakpoints": true
     }
   ]
 }
