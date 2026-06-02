@@ -8,6 +8,7 @@ import {
   index,
 } from 'drizzle-orm/pg-core';
 import { shows } from './shows';
+import { seasons } from './seasons';
 
 export const episodeStatusEnum = pgEnum('episode_status', [
   'uploaded',
@@ -28,6 +29,7 @@ export const episodes = pgTable(
       .notNull()
       .references(() => shows.id, { onDelete: 'cascade' }),
     number: integer('number').notNull(),
+    seasonId: uuid('season_id').references(() => seasons.id, { onDelete: 'set null' }),
     title: text('title'),
     sourceLanguage: text('source_language').notNull().default('ja'),
     targetLanguage: text('target_language').notNull().default('en'),

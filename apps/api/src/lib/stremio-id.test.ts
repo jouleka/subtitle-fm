@@ -1,8 +1,11 @@
 import { expect, test } from 'bun:test';
 import { parseStremioSubtitleId } from './stremio-id';
 
-test('parses an imdb series id (episode is the last segment, season ignored)', () => {
-  expect(parseStremioSubtitleId('series', 'tt0903747:1:5')).toEqual({ source: 'imdb', externalId: 'tt0903747', episode: 5 });
+test('parses an imdb series id (captures season; episode is the last segment)', () => {
+  expect(parseStremioSubtitleId('series', 'tt0903747:1:5')).toEqual({ source: 'imdb', externalId: 'tt0903747', episode: 5, season: 1 });
+});
+test('omits season for a non-integer imdb season segment', () => {
+  expect(parseStremioSubtitleId('series', 'tt0903747:x:5')).toEqual({ source: 'imdb', externalId: 'tt0903747', episode: 5 });
 });
 test('parses a kitsu series id', () => {
   expect(parseStremioSubtitleId('series', 'kitsu:42:7')).toEqual({ source: 'kitsu', externalId: '42', episode: 7 });

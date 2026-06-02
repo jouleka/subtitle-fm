@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, test } from "bun:test";
 import { db } from "./lib/db";
 import { schema } from "@subtitle-fm/db";
-import { inArray } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 // Cover every external-id column, not just one — a wrong/non-unique index on
 // any of them would otherwise slip through (final-review Rule-9 note).
@@ -52,5 +52,47 @@ describe("shows external-id uniqueness (SFM-64)", () => {
       .from(schema.shows)
       .where(inArray(schema.shows.id, NULL_IDS));
     expect(rows.length).toBe(2);
+  });
+});
+
+describe("seasons (SFM-63)", () => {
+  const SHOW = "sfm63-show";
+  beforeAll(async () => {
+    await db.delete(schema.shows).where(eq(schema.shows.id, SHOW));
+    await db.insert(schema.shows).values({ id: SHOW, title: "s63", slug: "sfm63-show" });
+  });
+  afterAll(async () => {
+    // deleting the show cascades to its seasons + episodes (FK onDelete cascade)
+    await db.delete(schema.shows).where(eq(schema.shows.id, SHOW));
+  });
+
+  // Both inserts omit `id` (defaultRandom → distinct PKs) and share (showId, number),
+  // so a rejection is provably from seasons_show_number_idx, not the PK.
+  test("rejects a duplicate (showId, number) season", async () => {
+    await db.insert(schema.seasons).values({ showId: SHOW, number: 1, title: "S1" });
+    let threw = false;
+    try {
+      await db.insert(schema.seasons).values({ showId: SHOW, number: 1, title: "dup" });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+  });
+
+  test("an episode can link a season, and seasonId may be null", async () => {
+    const [s] = await db
+      .insert(schema.seasons)
+      .values({ showId: SHOW, number: 2, title: "S2" })
+      .returning({ id: schema.seasons.id });
+    const [linked] = await db
+      .insert(schema.episodes)
+      .values({ showId: SHOW, number: 1, seasonId: s!.id })
+      .returning({ seasonId: schema.episodes.seasonId });
+    expect(linked!.seasonId).toBe(s!.id);
+    const [unlinked] = await db
+      .insert(schema.episodes)
+      .values({ showId: SHOW, number: 2 })
+      .returning({ seasonId: schema.episodes.seasonId });
+    expect(unlinked!.seasonId).toBeNull();
   });
 });

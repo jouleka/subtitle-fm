@@ -4,6 +4,12 @@ export interface ParsedStremioSubId {
   source: StremioSubSource;
   externalId: string;
   episode: number;
+  /**
+   * imdb season segment, if present and valid. Reserved for the future
+   * per-season model (SFM-63 follow-up) — NOT yet used in resolution; the
+   * Stremio route still matches by absolute episode `number`.
+   */
+  season?: number;
 }
 
 /**
@@ -19,7 +25,13 @@ export function parseStremioSubtitleId(type: string, id: string): ParsedStremioS
   const episode = Number(parts[parts.length - 1]);
   if (!Number.isInteger(episode) || episode < 0) return null;
   const prefix = parts[0]!;
-  if (prefix.startsWith('tt')) return { source: 'imdb', externalId: prefix, episode };
+  if (prefix.startsWith('tt')) {
+    // imdb ids are `tt<digits>:<season>:<episode>` — capture the season (parts[1])
+    // for the future per-season model; resolution still uses the episode segment.
+    const season = Number(parts[1]);
+    const base = { source: 'imdb' as const, externalId: prefix, episode };
+    return Number.isInteger(season) && season >= 0 ? { ...base, season } : base;
+  }
   if (prefix === 'kitsu' || prefix === 'mal') {
     const externalId = parts[1];
     if (!externalId) return null;

@@ -1,5 +1,6 @@
 export * from './users';
 export * from './shows';
+export * from './seasons';
 export * from './episodes';
 export * from './cues';
 export * from './glossary';
