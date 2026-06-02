@@ -19,6 +19,18 @@ export interface ParsedStremioSubId {
  * malformed ids return null (caller serves []).
  */
 export function parseStremioSubtitleId(type: string, id: string): ParsedStremioSubId | null {
+  if (type === 'movie') {
+    // Movies map to a show's single episode (numbered 1). imdb movie ids are a
+    // bare `tt<digits>`; kitsu/mal movie ids are `<prefix>:<id>` (no episode).
+    const parts = id.split(':');
+    if (parts.length === 1 && parts[0]!.startsWith('tt')) {
+      return { source: 'imdb', externalId: parts[0]!, episode: 1 };
+    }
+    if (parts.length === 2 && (parts[0] === 'kitsu' || parts[0] === 'mal') && parts[1]) {
+      return { source: parts[0], externalId: parts[1], episode: 1 };
+    }
+    return null;
+  }
   if (type !== 'series') return null;
   const parts = id.split(':');
   if (parts.length < 3) return null;
