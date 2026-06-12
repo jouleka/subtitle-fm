@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema, advanceEpisodeStatus, failEpisode } from '@subtitle-fm/db';
 import { JOB_OPTS_DEFAULT, type JobPayloadByQueue } from '@subtitle-fm/shared';
@@ -37,10 +38,20 @@ const transcribeCompleted = z.object({
   stage: z.literal('transcribe'),
   output: z.object({ transcriptKey: z.string().min(1) }),
 });
+/** One translated cue as the worker hands it back (camelCase, matches the
+ * `cues` table columns the receiver writes). */
+const cueOutput = z.object({
+  startMs: z.number().int(),
+  endMs: z.number().int(),
+  text: z.string(),
+  confidence: z.number().nullable().optional(),
+  needsReview: z.boolean(),
+});
 const translateCompleted = z.object({
   ...baseFields,
   status: z.literal('completed'),
   stage: z.literal('translate'),
+  output: z.object({ cues: z.array(cueOutput) }),
 });
 const publishCompleted = z.object({
   ...baseFields,
@@ -186,6 +197,24 @@ export const webhooksRunpod = new Hono().post('/', async (c) => {
   }
 
   if (parsed.stage === 'translate') {
+    // Persist the AI-translated cues — this is what the editor seeds from.
+    // Replace any existing cues for the episode so a reprocess is clean.
+    await db.transaction(async (tx) => {
+      await tx.delete(schema.cues).where(eq(schema.cues.episodeId, parsed.episodeId));
+      if (parsed.output.cues.length > 0) {
+        await tx.insert(schema.cues).values(
+          parsed.output.cues.map((cue, i) => ({
+            episodeId: parsed.episodeId,
+            orderIndex: i,
+            startMs: cue.startMs,
+            endMs: cue.endMs,
+            text: cue.text,
+            confidence: cue.confidence ?? null,
+            needsReview: cue.needsReview,
+          })),
+        );
+      }
+    });
     const result = await advanceEpisodeStatus(db, parsed.episodeId, {
       from: ['translating'],
       to: 'ready_for_edit',
@@ -197,7 +226,11 @@ export const webhooksRunpod = new Hono().post('/', async (c) => {
       );
       return c.json({ status: 'ok', skipped: true });
     }
-    return c.json({ status: 'ok' });
+    log.info(
+      { episodeId: parsed.episodeId, cues: parsed.output.cues.length },
+      'webhook.runpod.translate.cues_written',
+    );
+    return c.json({ status: 'ok', cues: parsed.output.cues.length });
   }
 
   // stage === 'publish'

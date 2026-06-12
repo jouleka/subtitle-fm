@@ -159,7 +159,7 @@ def _run_translate(
     glossary_raw: Any,
     show_title: str | None,
     work_dir: Path,
-) -> dict[str, str]:
+) -> dict[str, Any]:
     """Translate stage.
 
     Per the api's webhook schema (`translateCompleted` in webhooks-runpod.ts),
@@ -177,13 +177,22 @@ def _run_translate(
     segments = _read_segments_json(local)
     glossary = _parse_glossary(glossary_raw)
     translated = translate_segments(segments, glossary, show_title=show_title)
-    # Keep the file in work_dir for log inspection on RunPod; don't upload.
-    out_path = work_dir / "translated.json"
-    _write_segments_json(translated, out_path)
-    # episode_id is unused right now but kept in the signature for symmetry
-    # with the other stages and for the cues-writer follow-up.
+    # Hand the translated cues back to the api via the webhook `output`; the
+    # /webhooks/runpod receiver persists them to the `cues` table, which the
+    # editor seeds from. (episode_id is threaded by the api, not used here.)
     del episode_id
-    return {}
+    return {
+        "cues": [
+            {
+                "startMs": s.start_ms,
+                "endMs": s.end_ms,
+                "text": s.text,
+                "confidence": s.confidence,
+                "needsReview": s.needs_review,
+            }
+            for s in translated
+        ]
+    }
 
 
 def handler(event: dict[str, Any]) -> dict[str, Any]:

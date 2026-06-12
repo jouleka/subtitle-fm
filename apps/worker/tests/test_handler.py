@@ -174,7 +174,7 @@ def test_transcribe_dispatch_routes_full_key_to_media_bucket(
         vocals.write_bytes(b"stub vocals")
         return VocalsOutput(vocals_path=vocals, model="stub")
 
-    def fake_transcribe(audio: Path) -> list[TranscriptSegment]:
+    def fake_transcribe(audio: Path, **_kwargs: object) -> list[TranscriptSegment]:
         return [TranscriptSegment(start_ms=0, end_ms=1000, text="hi", confidence=0.9)]
 
     monkeypatch.setattr(handler_mod, "isolate_vocals", fake_isolate)
@@ -203,7 +203,7 @@ def test_transcribe_dispatch_routes_full_key_to_media_bucket(
     assert stub_r2["downloads"][0]["key"] == "stage/preprocess/ep-2.wav"
 
 
-def test_translate_dispatch_emits_empty_output_per_api_schema(
+def test_translate_dispatch_emits_cues_for_the_api(
     monkeypatch: pytest.MonkeyPatch,
     webhook_spy: WebhookSpy,
     stub_r2: dict[str, list[Any]],
@@ -259,13 +259,15 @@ def test_translate_dispatch_emits_empty_output_per_api_schema(
     assert len(captured["glossary"]) == 1
     assert captured["glossary"][0].source_text == "こんにちは"
 
-    # Translate.completed carries NO output keys per the api's
-    # webhooks-runpod.ts translateCompleted schema (translate's product
-    # is in the cues table, not an R2 artifact). Returning {} is the
-    # honest representation; pretending we have a usable artifact would
-    # invite a downstream caller to depend on something nothing consumes.
+    # Translate.completed now hands the translated cues back in `output.cues`;
+    # the api's /webhooks/runpod receiver writes them to the `cues` table the
+    # editor seeds from (webhooks-runpod.ts translateCompleted schema).
     payload = webhook_spy.calls[0]["payload"]
-    assert payload["output"] == {}
+    assert payload["output"] == {
+        "cues": [
+            {"startMs": 0, "endMs": 1000, "text": "Hello", "confidence": 0.9, "needsReview": False}
+        ]
+    }
 
 
 # ---------------------------------------------------------------------------
