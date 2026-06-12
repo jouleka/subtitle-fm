@@ -128,8 +128,16 @@ def _run_preprocess(episode_id: str, source_url: str, work_dir: Path) -> dict[st
 
 def _run_transcribe(episode_id: str, audio_url: str, work_dir: Path) -> dict[str, str]:
     local = _fetch_input(audio_url, work_dir, "audio.wav")
-    vocals = isolate_vocals(local, work_dir)
-    segments = transcribe_audio(vocals.vocals_path)
+    # SKIP_DEMUCS opts out of vocal isolation and runs ASR on the preprocessed
+    # audio directly. Appropriate for BGM-free content (clean speech) or when
+    # the demucs/torch stack isn't available. Anime with constant music still
+    # wants Demucs (the default) — vocal isolation is the #1 WER fix there.
+    if os.environ.get("SKIP_DEMUCS"):
+        log.info("transcribe.skip_demucs", episode_id=episode_id)
+        asr_input = local
+    else:
+        asr_input = isolate_vocals(local, work_dir).vocals_path
+    segments = transcribe_audio(asr_input)
     out_path = work_dir / "transcript.json"
     _write_segments_json(segments, out_path)
     key = derive_stage_artifact_key(episode_id, "transcribe", "json")
