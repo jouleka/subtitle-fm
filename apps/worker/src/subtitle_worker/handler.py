@@ -31,6 +31,7 @@ from typing import Any
 import httpx
 import structlog
 
+from subtitle_worker.config import settings
 from subtitle_worker.r2_client import (
     derive_stage_artifact_key,
     download_to_file,
@@ -137,7 +138,14 @@ def _run_transcribe(episode_id: str, audio_url: str, work_dir: Path) -> dict[str
         asr_input = local
     else:
         asr_input = isolate_vocals(local, work_dir).vocals_path
-    segments = transcribe_audio(asr_input)
+    # Wire the ASR settings through (model / device / compute type) — previously
+    # transcribe_audio ran on its hardcoded defaults, ignoring config + env.
+    segments = transcribe_audio(
+        asr_input,
+        model_path=settings.asr_model,
+        device=settings.asr_device or None,
+        compute_type=settings.asr_compute_type,
+    )
     out_path = work_dir / "transcript.json"
     _write_segments_json(segments, out_path)
     key = derive_stage_artifact_key(episode_id, "transcribe", "json")

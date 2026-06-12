@@ -11,7 +11,11 @@ class Settings(BaseSettings):
     redis_url: str = "redis://localhost:6379"
     database_url: str = "postgres://user:pass@localhost:5432/subtitle_fm"
 
-    asr_model: str = "litagin/anime-whisper"
+    # faster-whisper needs a CTranslate2-format model. `large-v3` is pulled
+    # ready-made. The intended `litagin/anime-whisper` is a transformers
+    # checkpoint and must first be converted with `ct2-transformers-converter`
+    # (see stages/asr.py) and pointed at via ASR_MODEL=<ct2-dir>.
+    asr_model: str = "large-v3"
     asr_compute_type: str = "float16"
     asr_device: str = "cuda"
 
