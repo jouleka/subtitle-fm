@@ -27,6 +27,15 @@ COPY src/ ./src/
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir ".[runpod,openai]"
 
+# Demucs fix: PyPI demucs 4.0.1 ships WITHOUT the `demucs.api` module the worker
+# imports (it only exists in git). Install the git version that has it, with
+# --no-deps so its stale `torchaudio<2.2` metadata pin doesn't conflict with the
+# torch stack above (the code runs fine on the installed torchaudio). torchcodec
+# backs torchaudio.save()/load() on torchaudio>=2.9. Verified locally: real
+# htdemucs separation + save of a Japanese clip succeeds.
+RUN pip install --no-cache-dir --no-deps "git+https://github.com/adefossez/demucs.git@b9ab48cad45976ba42b2ff17b229c071f0df9390" \
+    && pip install --no-cache-dir torchcodec
+
 # RunPod's serverless framework expects a long-lived process that polls
 # for jobs. handler.py registers our handler() and starts the poller.
 CMD ["python", "-m", "subtitle_worker.handler"]
