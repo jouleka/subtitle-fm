@@ -22,10 +22,10 @@ WORKDIR /app
 COPY pyproject.toml ./
 COPY src/ ./src/
 
-# Install our package + RunPod SDK. The runpod extra is the only difference
-# from a local pip install -e ".[dev]".
+# Install our package + RunPod SDK + the OpenAI translate provider. The
+# runpod/openai extras are the only difference from a local pip install -e ".[dev]".
 RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir ".[runpod]"
+    && pip install --no-cache-dir ".[runpod,openai]"
 
 # RunPod's serverless framework expects a long-lived process that polls
 # for jobs. handler.py registers our handler() and starts the poller.
