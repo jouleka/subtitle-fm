@@ -1,0 +1,35 @@
+# Keep the build context small and secrets OUT of the image. The Bun service
+# Dockerfile does `COPY . .`, so anything not excluded here lands in the image.
+node_modules
+**/node_modules
+
+# Secrets — never bake these into an image.
+.env
+.env.*
+!.env.example
+
+# VCS + local-only tooling (gitignored anyway; excluded so a local build matches CI)
+.git
+.gitignore
+CLAUDE.md
+.claude
+docs/superpowers
+
+# Build outputs / caches
+dist
+build
+**/dist
+**/build
+.svelte-kit
+**/.svelte-kit
+.turbo
+*.log
+
+# The Python worker ships its own image (apps/worker/Dockerfile) + runs on
+# RunPod; it isn't part of the Bun service images.
+apps/worker
+
+# Test/CI scratch
+coverage
+**/*.test.ts
+.DS_Store
