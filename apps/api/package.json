@@ -8,6 +8,7 @@
     "dev": "bun --hot src/index.ts",
     "start": "bun src/index.ts",
     "import": "bun src/import-catalog.ts",
+    "resolve": "bun src/resolve-catalog.ts",
     "build": "bun build src/index.ts --target=bun --outdir=dist",
     "test": "bun test",
     "typecheck": "tsc --noEmit"

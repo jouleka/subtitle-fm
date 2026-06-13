@@ -22,7 +22,7 @@ const catalogEpisodeSchema = z.object({
   targetLanguage: z.string().default('en'),
 });
 
-const catalogShowSchema = z
+export const catalogShowSchema = z
   .object({
     id: z.string().min(1).max(64),
     title: z.string().min(1),
