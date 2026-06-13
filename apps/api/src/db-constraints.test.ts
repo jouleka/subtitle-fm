@@ -96,3 +96,40 @@ describe("seasons (SFM-63)", () => {
     expect(unlinked!.seasonId).toBeNull();
   });
 });
+
+describe("episodes (show_id, number) uniqueness (bulk-ingest)", () => {
+  // Bulk ingestion leans on the DB to dedup (onConflictDoNothing), not the old
+  // app-level SELECT-then-409 (a TOCTOU race under concurrent batches). These
+  // tests encode that (show_id, number) is a hard DB invariant.
+  const SHOW = "sfm-epuniq-show";
+  const SHOW2 = "sfm-epuniq-show2";
+  beforeAll(async () => {
+    await db.delete(schema.shows).where(inArray(schema.shows.id, [SHOW, SHOW2]));
+    await db.insert(schema.shows).values({ id: SHOW, title: "epuniq", slug: "sfm-epuniq-show" });
+    await db.insert(schema.shows).values({ id: SHOW2, title: "epuniq2", slug: "sfm-epuniq-show2" });
+  });
+  afterAll(async () => {
+    // deleting the shows cascades to their episodes (FK onDelete cascade)
+    await db.delete(schema.shows).where(inArray(schema.shows.id, [SHOW, SHOW2]));
+  });
+
+  test("rejects a duplicate (show_id, number) episode (intent: dedup is a DB invariant bulk relies on)", async () => {
+    await db.insert(schema.episodes).values({ showId: SHOW, number: 1 });
+    let threw = false;
+    try {
+      await db.insert(schema.episodes).values({ showId: SHOW, number: 1 });
+    } catch {
+      threw = true;
+    }
+    expect(threw).toBe(true);
+  });
+
+  test("allows the same number across different shows (intent: episode numbering is per-show)", async () => {
+    await db.insert(schema.episodes).values({ showId: SHOW, number: 5 });
+    const [ep] = await db
+      .insert(schema.episodes)
+      .values({ showId: SHOW2, number: 5 })
+      .returning({ id: schema.episodes.id });
+    expect(ep!.id).toBeTruthy();
+  });
+});

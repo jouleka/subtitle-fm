@@ -6,6 +6,7 @@ import {
   timestamp,
   pgEnum,
   index,
+  uniqueIndex,
 } from 'drizzle-orm/pg-core';
 import { shows } from './shows';
 import { seasons } from './seasons';
@@ -41,7 +42,10 @@ export const episodes = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    showNumberIdx: index('episodes_show_number_idx').on(t.showId, t.number),
+    // UNIQUE so dedup is a DB invariant (bulk ingest uses onConflictDoNothing on
+    // this). NOTE: when the per-season model lands (SFM-66), this becomes
+    // (show_id, season_id, number) NULLS NOT DISTINCT via a follow-up migration.
+    showNumberIdx: uniqueIndex('episodes_show_number_idx').on(t.showId, t.number),
     statusIdx: index('episodes_status_idx').on(t.status),
   }),
 );

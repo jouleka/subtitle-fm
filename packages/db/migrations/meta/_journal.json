@@ -57,6 +57,13 @@
       "when": 1780392858665,
       "tag": "0007_fantastic_crystal",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1781356037586,
+      "tag": "0008_white_diamondback",
+      "breakpoints": true
     }
   ]
 }
