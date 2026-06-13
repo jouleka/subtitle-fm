@@ -5,13 +5,12 @@ import { and, asc, eq } from 'drizzle-orm';
 import { schema } from '@subtitle-fm/db';
 import { advanceEpisodeStatus } from '@subtitle-fm/db';
 import { db } from '../lib/db';
-import { preprocessQueue } from '../lib/queue';
-import { JOB_OPTS_DEFAULT, type PreprocessJob } from '@subtitle-fm/shared';
 import { liveCuesFromSnapshot, type LiveCue } from '@subtitle-fm/shared/yjs';
 import { serializeAss, defaultParsedAss, toSrt, toVtt } from '@subtitle-fm/ass';
 import { log } from '../lib/log';
 import { requireSession, type AuthVariables } from '../lib/session';
 import { putObject, presignGet } from '../lib/r2';
+import { ingestEpisode } from '../lib/ingest';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
@@ -37,78 +36,6 @@ const bulkEpisodesSchema = z.object({
 function publishedKeys(id: string) {
   const base = `subtitles/${id}/published`;
   return { ass: `${base}.ass`, srt: `${base}.srt`, vtt: `${base}.vtt` };
-}
-
-type IngestResult =
-  | { status: 'created'; episode: typeof schema.episodes.$inferSelect }
-  | { status: 'exists'; existingId: string }
-  | { status: 'failed'; error: string };
-
-/**
- * Insert one episode + enqueue its preprocess job, idempotent on
- * (showId, number) via the DB unique index. Shared by single-create and bulk so
- * the insert/enqueue/dedup logic has one home. The caller MUST have already
- * verified the show exists (FK is the backstop). Sequential callers only — bulk
- * relies on per-item autocommit so an in-batch duplicate number conflicts here
- * rather than racing.
- */
-async function ingestEpisode(input: {
-  showId: string;
-  number: number;
-  title?: string;
-  sourceUrl: string;
-  sourceLanguage: string;
-  targetLanguage: string;
-}): Promise<IngestResult> {
-  const [episode] = await db
-    .insert(schema.episodes)
-    .values({
-      showId: input.showId,
-      number: input.number,
-      title: input.title ?? null,
-      sourceLanguage: input.sourceLanguage,
-      targetLanguage: input.targetLanguage,
-      status: 'uploaded',
-    })
-    .onConflictDoNothing({ target: [schema.episodes.showId, schema.episodes.number] })
-    .returning();
-
-  if (!episode) {
-    // (showId, number) already exists — surface the existing id so callers can
-    // report "skipped" / 409 without a second insert.
-    const [existing] = await db
-      .select({ id: schema.episodes.id })
-      .from(schema.episodes)
-      .where(
-        and(eq(schema.episodes.showId, input.showId), eq(schema.episodes.number, input.number)),
-      )
-      .limit(1);
-    if (!existing) return { status: 'failed', error: 'conflict_unresolved' };
-    return { status: 'exists', existingId: existing.id };
-  }
-
-  const job: PreprocessJob = {
-    episodeId: episode.id,
-    pipelineRunId: crypto.randomUUID(),
-    sourceUrl: input.sourceUrl,
-  };
-  try {
-    await preprocessQueue.add('preprocess', job, { jobId: episode.id, ...JOB_OPTS_DEFAULT });
-  } catch {
-    // Enqueue failed after the row was inserted. Compensate by deleting the row
-    // so the invariant "an episode row always has a queued job" holds — otherwise
-    // a retry would skip the now-"existing" orphan forever. Bulk amplifies this.
-    try {
-      await db.delete(schema.episodes).where(eq(schema.episodes.id, episode.id));
-    } catch (delErr) {
-      log.error(
-        { episodeId: episode.id, err: String(delErr) },
-        'episode.enqueue_orphan_cleanup_failed',
-      );
-    }
-    return { status: 'failed', error: 'enqueue_failed' };
-  }
-  return { status: 'created', episode };
 }
 
 export const episodes = new Hono<{ Variables: AuthVariables }>()

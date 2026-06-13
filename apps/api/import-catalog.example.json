@@ -1,0 +1,22 @@
+[
+  {
+    "id": "demo-show",
+    "title": "Demo Show",
+    "slug": "demo-show",
+    "description": "Optional. malId/anilistId/kitsuId are optional external ids.",
+    "malId": "0000",
+    "episodes": [
+      {
+        "number": 1,
+        "title": "The Beginning",
+        "sourceUrl": "https://example.com/REPLACE_ME/ep1.mp4",
+        "sourceLanguage": "ja",
+        "targetLanguage": "en"
+      },
+      {
+        "number": 2,
+        "sourceUrl": "https://example.com/REPLACE_ME/ep2.mp4"
+      }
+    ]
+  }
+]
