@@ -91,9 +91,16 @@ export class ShowConflictError extends Error {
   }
 }
 
-// postgres.js surfaces the SQLSTATE on the error object. 23505 = unique_violation.
-function isUniqueViolation(e: unknown): e is { code: string; constraint_name?: string } {
-  return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === '23505';
+// 23505 = unique_violation. drizzle-orm >=0.45 wraps driver errors in a
+// DrizzleQueryError, so the postgres.js SQLSTATE/constraint sit on `.cause`;
+// older versions surfaced them directly. Check both and return the pg-error
+// layer (carrying constraint_name) so the caller can build a clear message.
+function asUniqueViolation(e: unknown): { constraint_name?: string } | null {
+  const direct = e as { code?: unknown; constraint_name?: string } | null;
+  if (direct && direct.code === '23505') return direct;
+  const cause = (e as { cause?: { code?: unknown; constraint_name?: string } } | null)?.cause;
+  if (cause && cause.code === '23505') return cause;
+  return null;
 }
 
 export type EnsureShowInput = {
@@ -137,7 +144,8 @@ export async function ensureShow(
     });
     return { status: 'created' };
   } catch (e) {
-    if (isUniqueViolation(e)) throw new ShowConflictError(input.id, e.constraint_name);
+    const pg = asUniqueViolation(e);
+    if (pg) throw new ShowConflictError(input.id, pg.constraint_name);
     throw e;
   }
 }

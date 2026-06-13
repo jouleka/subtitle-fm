@@ -16,7 +16,7 @@
     "@hocuspocus/server": "^3.0.0",
     "@subtitle-fm/db": "workspace:*",
     "@subtitle-fm/shared": "workspace:*",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "postgres": "^3.4.5",
     "yjs": "^13.6.20"
   },

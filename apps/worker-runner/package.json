@@ -14,7 +14,7 @@
     "@subtitle-fm/db": "workspace:*",
     "@subtitle-fm/shared": "workspace:*",
     "bullmq": "^5.34.0",
-    "drizzle-orm": "^0.38.0",
+    "drizzle-orm": "^0.45.2",
     "ioredis": "^5.4.1",
     "pino": "^9.5.0",
     "pino-pretty": "^13.0.0",
