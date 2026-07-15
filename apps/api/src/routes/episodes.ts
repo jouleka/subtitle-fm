@@ -11,6 +11,7 @@ import { log } from '../lib/log';
 import { requireSession, type AuthVariables } from '../lib/session';
 import { putObject, presignGet } from '../lib/r2';
 import { ingestEpisode } from '../lib/ingest';
+import { episodePeaksKey } from '../lib/artifacts';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
@@ -69,6 +70,18 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .orderBy(asc(schema.cues.orderIndex));
     return c.json({ cues: rows });
   })
+  .get('/:id/peaks.dat', async (c) => {
+    const id = c.req.param('id');
+    const [ep] = await db
+      .select({ id: schema.episodes.id, peaksUrl: schema.episodes.peaksUrl })
+      .from(schema.episodes)
+      .where(eq(schema.episodes.id, id))
+      .limit(1);
+    if (!ep) return c.json({ error: 'episode_not_found' }, 404);
+    if (!ep.peaksUrl) return c.json({ error: 'waveform_not_ready' }, 404);
+    const url = await presignGet({ bucket: 'peaks', key: episodePeaksKey(id) });
+    return c.redirect(url, 302);
+  })
   .get('/:id/subtitle.srt', async (c) => {
     const id = c.req.param('id');
     const [ep] = await db
@@ -126,9 +139,15 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
         .where(eq(schema.cues.episodeId, id))
         .orderBy(asc(schema.cues.orderIndex));
       cues = rows.map((r) => ({
-        id: r.id, orderIndex: r.orderIndex, startMs: r.startMs, endMs: r.endMs,
-        text: r.text, styleName: r.styleName,
-        speakerId: r.speakerId, confidence: r.confidence, needsReview: r.needsReview,
+        id: r.id,
+        orderIndex: r.orderIndex,
+        startMs: r.startMs,
+        endMs: r.endMs,
+        text: r.text,
+        styleName: r.styleName,
+        speakerId: r.speakerId,
+        confidence: r.confidence,
+        needsReview: r.needsReview,
       }));
     }
 
@@ -157,7 +176,10 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       return c.json({ error: 'r2_upload_failed', detail: (e as Error).message }, 502);
     }
 
-    const result = await advanceEpisodeStatus(db, id, { from: ['ready_for_edit', 'in_review'], to: 'published' });
+    const result = await advanceEpisodeStatus(db, id, {
+      from: ['ready_for_edit', 'in_review'],
+      to: 'published',
+    });
     if (!result.advanced && result.currentStatus !== 'published')
       return c.json({ error: 'not_publishable', currentStatus: result.currentStatus }, 409);
     return c.json({ status: 'published', key: keys.ass, keys });

@@ -96,6 +96,13 @@ def derive_stage_artifact_key(episode_id: str, stage: str, ext: str) -> str:
     return f"stage/{stage}/{episode_id}.{ext}"
 
 
+def derive_episode_peaks_key(episode_id: str) -> str:
+    """Stable waveform key so retrying preprocessing overwrites the object."""
+    if not episode_id or "/" in episode_id or ".." in episode_id:
+        raise ValueError(f"invalid episode_id: {episode_id!r}")
+    return f"{episode_id}.dat"
+
+
 def upload_file(local_path: Path, bucket: str, key: str) -> None:
     """Upload a local file to R2 at `bucket/key`. Raises on failure."""
     get_client().upload_file(str(local_path), bucket, key)

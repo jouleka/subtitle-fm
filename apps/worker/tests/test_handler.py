@@ -88,31 +88,35 @@ def test_unsupported_stage_raises_without_posting_callback(webhook_spy: WebhookS
     # callback is correct: failing the episode for a routing bug would
     # mask the real problem.
     with pytest.raises(ValueError, match="unsupported stage"):
-        handler_mod.handler({
-            "input": {
-                "stage": "publish",  # not handled by the worker
-                "episodeId": "ep-1",
-                "eventId": "ep-1:publish:run-1",
-                "pipelineRunId": "run-1",
-                "webhookUrl": "https://api.example/webhooks/runpod",
+        handler_mod.handler(
+            {
+                "input": {
+                    "stage": "publish",  # not handled by the worker
+                    "episodeId": "ep-1",
+                    "eventId": "ep-1:publish:run-1",
+                    "pipelineRunId": "run-1",
+                    "webhookUrl": "https://api.example/webhooks/runpod",
+                }
             }
-        })
+        )
     assert webhook_spy.calls == []
 
 
 def test_missing_webhook_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("WORKER_WEBHOOK_SECRET", raising=False)
     with pytest.raises(RuntimeError, match="WORKER_WEBHOOK_SECRET"):
-        handler_mod.handler({
-            "input": {
-                "stage": "preprocess",
-                "episodeId": "ep-1",
-                "eventId": "ep-1:preprocess:run-1",
-                "pipelineRunId": "run-1",
-                "webhookUrl": "https://api.example/webhooks/runpod",
-                "sourceUrl": "https://example/in.mkv",
+        handler_mod.handler(
+            {
+                "input": {
+                    "stage": "preprocess",
+                    "episodeId": "ep-1",
+                    "eventId": "ep-1:preprocess:run-1",
+                    "pipelineRunId": "run-1",
+                    "webhookUrl": "https://api.example/webhooks/runpod",
+                    "sourceUrl": "https://example/in.mkv",
+                }
             }
-        })
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -120,7 +124,7 @@ def test_missing_webhook_secret_raises(monkeypatch: pytest.MonkeyPatch) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_preprocess_dispatch_posts_completed_callback_with_audio_key(
+def test_preprocess_dispatch_posts_completed_callback_with_artifact_keys(
     monkeypatch: pytest.MonkeyPatch,
     webhook_spy: WebhookSpy,
     stub_r2: dict[str, list[Any]],
@@ -134,20 +138,32 @@ def test_preprocess_dispatch_posts_completed_callback_with_audio_key(
     monkeypatch.setattr(handler_mod, "preprocess_for_asr", fake_preprocess)
     monkeypatch.setattr(handler_mod, "_download_http", _fake_http_download)
 
-    result = handler_mod.handler({
-        "input": {
-            "stage": "preprocess",
-            "episodeId": "ep-1",
-            "eventId": "ep-1:preprocess:run-1",
-            "pipelineRunId": "run-1",
-            "webhookUrl": "https://api.example/webhooks/runpod",
-            "sourceUrl": "https://example/in.mkv",
+    def fake_generate_peaks(audio: Path, output: Path) -> Path:
+        assert audio.name == "trimmed.wav"
+        output.write_bytes(b"stub waveform data")
+        return output
+
+    monkeypatch.setattr(handler_mod, "generate_waveform_data", fake_generate_peaks)
+
+    result = handler_mod.handler(
+        {
+            "input": {
+                "stage": "preprocess",
+                "episodeId": "ep-1",
+                "eventId": "ep-1:preprocess:run-1",
+                "pipelineRunId": "run-1",
+                "webhookUrl": "https://api.example/webhooks/runpod",
+                "sourceUrl": "https://example/in.mkv",
+            }
         }
-    })
+    )
 
     assert result["status"] == "completed"
     assert result["stage"] == "preprocess"
-    assert result["output"] == {"audioKey": "stage/preprocess/ep-1.wav"}
+    assert result["output"] == {
+        "audioKey": "stage/preprocess/ep-1.wav",
+        "peaksKey": "ep-1.dat",
+    }
 
     assert len(webhook_spy.calls) == 1
     payload = webhook_spy.calls[0]["payload"]
@@ -155,11 +171,17 @@ def test_preprocess_dispatch_posts_completed_callback_with_audio_key(
     assert payload["stage"] == "preprocess"
     assert payload["eventId"] == "ep-1:preprocess:run-1"
     assert payload["pipelineRunId"] == "run-1"
-    assert payload["output"] == {"audioKey": "stage/preprocess/ep-1.wav"}
+    assert payload["output"] == {
+        "audioKey": "stage/preprocess/ep-1.wav",
+        "peaksKey": "ep-1.dat",
+    }
 
-    # Upload happened to the right bucket + key.
-    assert len(stub_r2["uploads"]) == 1
+    # Audio and waveform uploads use separate buckets and stable keys.
+    assert len(stub_r2["uploads"]) == 2
+    assert stub_r2["uploads"][0]["bucket"] == "subtitle-fm-media"
     assert stub_r2["uploads"][0]["key"] == "stage/preprocess/ep-1.wav"
+    assert stub_r2["uploads"][1]["bucket"] == "subtitle-fm-peaks"
+    assert stub_r2["uploads"][1]["key"] == "ep-1.dat"
 
 
 def test_transcribe_dispatch_routes_full_key_to_media_bucket(
@@ -180,16 +202,18 @@ def test_transcribe_dispatch_routes_full_key_to_media_bucket(
     monkeypatch.setattr(handler_mod, "isolate_vocals", fake_isolate)
     monkeypatch.setattr(handler_mod, "transcribe_audio", fake_transcribe)
 
-    handler_mod.handler({
-        "input": {
-            "stage": "transcribe",
-            "episodeId": "ep-2",
-            "eventId": "ep-2:transcribe:run-1",
-            "pipelineRunId": "run-1",
-            "webhookUrl": "https://api.example/webhooks/runpod",
-            "audioUrl": "stage/preprocess/ep-2.wav",  # bare key, not URL
+    handler_mod.handler(
+        {
+            "input": {
+                "stage": "transcribe",
+                "episodeId": "ep-2",
+                "eventId": "ep-2:transcribe:run-1",
+                "pipelineRunId": "run-1",
+                "webhookUrl": "https://api.example/webhooks/runpod",
+                "audioUrl": "stage/preprocess/ep-2.wav",  # bare key, not URL
+            }
         }
-    })
+    )
 
     assert webhook_spy.calls[0]["payload"]["output"] == {
         "transcriptKey": "stage/transcribe/ep-2.json"
@@ -214,6 +238,7 @@ def test_translate_dispatch_emits_cues_for_the_api(
     def write_real_json(bucket: str, key: str, local: Path) -> None:
         local.parent.mkdir(parents=True, exist_ok=True)
         import json
+
         local.write_text(
             json.dumps(
                 [
@@ -240,20 +265,20 @@ def test_translate_dispatch_emits_cues_for_the_api(
 
     monkeypatch.setattr(handler_mod, "translate_segments", fake_translate)
 
-    handler_mod.handler({
-        "input": {
-            "stage": "translate",
-            "episodeId": "ep-3",
-            "eventId": "ep-3:translate:run-1",
-            "pipelineRunId": "run-1",
-            "webhookUrl": "https://api.example/webhooks/runpod",
-            "transcriptUrl": "stage/transcribe/ep-3.json",
-            "showTitle": "Test Show",
-            "glossary": [
-                {"source_text": "こんにちは", "target_text": "Hello", "kind": "term"}
-            ],
+    handler_mod.handler(
+        {
+            "input": {
+                "stage": "translate",
+                "episodeId": "ep-3",
+                "eventId": "ep-3:translate:run-1",
+                "pipelineRunId": "run-1",
+                "webhookUrl": "https://api.example/webhooks/runpod",
+                "transcriptUrl": "stage/transcribe/ep-3.json",
+                "showTitle": "Test Show",
+                "glossary": [{"source_text": "こんにちは", "target_text": "Hello", "kind": "term"}],
+            }
         }
-    })
+    )
 
     assert captured["show_title"] == "Test Show"
     assert len(captured["glossary"]) == 1
@@ -285,16 +310,18 @@ def test_stage_exception_posts_failed_callback_and_reraises(
     monkeypatch.setattr(handler_mod, "_download_http", _fake_http_download)
 
     with pytest.raises(RuntimeError, match="preprocess imploded"):
-        handler_mod.handler({
-            "input": {
-                "stage": "preprocess",
-                "episodeId": "ep-9",
-                "eventId": "ep-9:preprocess:run-1",
-                "pipelineRunId": "run-1",
-                "webhookUrl": "https://api.example/webhooks/runpod",
-                "sourceUrl": "https://example/in.mkv",
+        handler_mod.handler(
+            {
+                "input": {
+                    "stage": "preprocess",
+                    "episodeId": "ep-9",
+                    "eventId": "ep-9:preprocess:run-1",
+                    "pipelineRunId": "run-1",
+                    "webhookUrl": "https://api.example/webhooks/runpod",
+                    "sourceUrl": "https://example/in.mkv",
+                }
             }
-        })
+        )
 
     # Re-raise IS the contract (RunPod marks the run failed), but the
     # failure callback must also fire so the api's state machine moves to

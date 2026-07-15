@@ -13,6 +13,7 @@ from subtitle_worker.r2_client import (
     DEFAULT_BUCKET_PEAKS,
     R2NotConfigured,
     _resolve_creds,
+    derive_episode_peaks_key,
     derive_stage_artifact_key,
     media_bucket,
     peaks_bucket,
@@ -32,12 +33,14 @@ class TestDeriveStageArtifactKey:
         assert a == b
 
     def test_differs_per_stage(self) -> None:
-        assert derive_stage_artifact_key("ep-x", "preprocess", "wav") != \
-            derive_stage_artifact_key("ep-x", "transcribe", "wav")
+        assert derive_stage_artifact_key("ep-x", "preprocess", "wav") != derive_stage_artifact_key(
+            "ep-x", "transcribe", "wav"
+        )
 
     def test_differs_per_episode(self) -> None:
-        assert derive_stage_artifact_key("ep-1", "preprocess", "wav") != \
-            derive_stage_artifact_key("ep-2", "preprocess", "wav")
+        assert derive_stage_artifact_key("ep-1", "preprocess", "wav") != derive_stage_artifact_key(
+            "ep-2", "preprocess", "wav"
+        )
 
     def test_rejects_path_traversal_in_episode_id(self) -> None:
         with pytest.raises(ValueError):
@@ -76,6 +79,17 @@ class TestBucketResolution:
     def test_peaks_bucket_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.delenv("R2_BUCKET_PEAKS", raising=False)
         assert peaks_bucket() == DEFAULT_BUCKET_PEAKS
+
+
+class TestDeriveEpisodePeaksKey:
+    def test_stable_episode_key(self) -> None:
+        assert derive_episode_peaks_key("ep-1") == "ep-1.dat"
+        assert derive_episode_peaks_key("ep-1") == derive_episode_peaks_key("ep-1")
+
+    @pytest.mark.parametrize("episode_id", ["", "../escape", "a/b"])
+    def test_rejects_invalid_episode_id(self, episode_id: str) -> None:
+        with pytest.raises(ValueError):
+            derive_episode_peaks_key(episode_id)
 
 
 class TestResolveCreds:

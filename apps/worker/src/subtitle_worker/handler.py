@@ -33,12 +33,15 @@ import structlog
 
 from subtitle_worker.config import settings
 from subtitle_worker.r2_client import (
+    derive_episode_peaks_key,
     derive_stage_artifact_key,
     download_to_file,
     media_bucket,
+    peaks_bucket,
     upload_file,
 )
 from subtitle_worker.stages.asr import TranscriptSegment, transcribe_audio
+from subtitle_worker.stages.peaks import generate_waveform_data
 from subtitle_worker.stages.preprocess import preprocess_for_asr
 from subtitle_worker.stages.translate import GlossaryEntry, translate_segments
 from subtitle_worker.stages.vocals import isolate_vocals
@@ -52,9 +55,7 @@ SUPPORTED_STAGES = {"preprocess", "transcribe", "translate"}
 def _resolve_webhook_secret() -> str:
     secret = os.environ.get("WORKER_WEBHOOK_SECRET", "")
     if not secret:
-        raise RuntimeError(
-            "WORKER_WEBHOOK_SECRET not set — refusing to POST unsigned callbacks"
-        )
+        raise RuntimeError("WORKER_WEBHOOK_SECRET not set — refusing to POST unsigned callbacks")
     return secret
 
 
@@ -122,9 +123,12 @@ def _parse_glossary(raw: Any) -> list[GlossaryEntry]:
 def _run_preprocess(episode_id: str, source_url: str, work_dir: Path) -> dict[str, str]:
     local = _fetch_input(source_url, work_dir, "source")
     out = preprocess_for_asr(local, work_dir)
-    key = derive_stage_artifact_key(episode_id, "preprocess", "wav")
-    upload_file(out, media_bucket(), key)
-    return {"audioKey": key}
+    audio_key = derive_stage_artifact_key(episode_id, "preprocess", "wav")
+    peaks_key = derive_episode_peaks_key(episode_id)
+    peaks_path = generate_waveform_data(out, work_dir / f"{episode_id}.dat")
+    upload_file(out, media_bucket(), audio_key)
+    upload_file(peaks_path, peaks_bucket(), peaks_key)
+    return {"audioKey": audio_key, "peaksKey": peaks_key}
 
 
 def _run_transcribe(episode_id: str, audio_url: str, work_dir: Path) -> dict[str, str]:
@@ -227,9 +231,7 @@ def handler(event: dict[str, Any]) -> dict[str, Any]:
     if stage not in SUPPORTED_STAGES:
         # Same — don't fail the episode for a dispatcher routing bug. The
         # caller (worker-runner) should never send unsupported stages here.
-        raise ValueError(
-            f"unsupported stage {stage!r}; supported: {sorted(SUPPORTED_STAGES)}"
-        )
+        raise ValueError(f"unsupported stage {stage!r}; supported: {sorted(SUPPORTED_STAGES)}")
 
     secret = _resolve_webhook_secret()
     log.info("handler.start", stage=stage, episode_id=episode_id, event_id=event_id)

@@ -7,6 +7,7 @@ import { db } from '../lib/db';
 import { verifyHmacSha256 } from '../lib/hmac';
 import { transcribeQueue, translateQueue } from '../lib/queue';
 import { log } from '../lib/log';
+import { episodePeaksKey, episodePeaksUrl } from '../lib/artifacts';
 
 const SIGNATURE_HEADER = 'X-Signature-256';
 
@@ -30,7 +31,7 @@ const preprocessCompleted = z.object({
   ...baseFields,
   status: z.literal('completed'),
   stage: z.literal('preprocess'),
-  output: z.object({ audioKey: z.string().min(1) }),
+  output: z.object({ audioKey: z.string().min(1), peaksKey: z.string().min(1) }),
 });
 const transcribeCompleted = z.object({
   ...baseFields,
@@ -95,6 +96,13 @@ export const webhooksRunpod = new Hono().post('/', async (c) => {
   let parsed;
   try {
     parsed = payloadSchema.parse(JSON.parse(raw));
+    if (
+      parsed.status === 'completed' &&
+      parsed.stage === 'preprocess' &&
+      parsed.output.peaksKey !== episodePeaksKey(parsed.episodeId)
+    ) {
+      throw new Error('peaksKey does not match episodeId');
+    }
   } catch (e) {
     log.warn(
       {
@@ -149,6 +157,11 @@ export const webhooksRunpod = new Hono().post('/', async (c) => {
 
   // status === 'completed' — Zod narrows `parsed` to per-stage shape.
   if (parsed.stage === 'preprocess') {
+    const base = process.env.API_PUBLIC_URL ?? new URL(c.req.url).origin;
+    await db
+      .update(schema.episodes)
+      .set({ peaksUrl: episodePeaksUrl(base, parsed.episodeId) })
+      .where(eq(schema.episodes.id, parsed.episodeId));
     const result = await advanceEpisodeStatus(db, parsed.episodeId, {
       from: ['preprocessing'],
       to: 'transcribing',

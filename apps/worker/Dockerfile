@@ -4,15 +4,31 @@
 # real GPU inference swap the base to `runpod/pytorch:2.5.1-py3.11-cuda12.4`
 # or similar; the rest of the Dockerfile stays the same.
 
-FROM python:3.11-slim AS runtime
+FROM python:3.11-slim-bookworm AS runtime
+
+ARG AUDIOWAVEFORM_VERSION=1.10.2
 
 # ffmpeg for the preprocess stage; build-essential because some Python
 # audio deps compile native code on install. git is needed by demucs to
 # pull demo audio on first run if the cache is missing.
 RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    curl \
     ffmpeg \
     git \
     build-essential \
+    && arch="$(dpkg --print-architecture)" \
+    && case "$arch" in \
+      amd64) checksum="63ef3226097e7dc7f17104b353f540f3d423191d675fdde4d00665fca231c5cf" ;; \
+      arm64) checksum="60459d5070aeafb4e73ba3873b3dd6c964b3bf4646d1caba67ab76554fb21c0e" ;; \
+      *) echo "unsupported architecture for audiowaveform: $arch" >&2; exit 1 ;; \
+    esac \
+    && package="audiowaveform_${AUDIOWAVEFORM_VERSION}-1-12_${arch}.deb" \
+    && curl -fsSL -o "/tmp/${package}" \
+      "https://github.com/bbc/audiowaveform/releases/download/${AUDIOWAVEFORM_VERSION}/${package}" \
+    && echo "${checksum}  /tmp/${package}" | sha256sum -c - \
+    && apt-get install -y --no-install-recommends "/tmp/${package}" \
+    && rm -f "/tmp/${package}" \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
