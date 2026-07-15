@@ -47,6 +47,31 @@ afterAll(async () => {
   await db.delete(schema.shows).where(eq(schema.shows.id, SHOW));
 });
 
+describe('GET /episodes/:id/subtitle.ass', () => {
+  test('302-redirects a published episode to the canonical ASS artifact', async () => {
+    const res = await app.request(`/episodes/${EP_PUB}/subtitle.ass`, { redirect: 'manual' });
+    expect(res.status).toBe(302);
+    expect(res.headers.get('location')).toBe(
+      `https://r2.example/presigned/subtitles/${EP_PUB}/published.ass`,
+    );
+    expect(presignGetMock).toHaveBeenLastCalledWith({
+      bucket: 'media',
+      key: `subtitles/${EP_PUB}/published.ass`,
+    });
+  });
+
+  test('404 not_published for an unpublished episode', async () => {
+    const res = await app.request(`/episodes/${EP_UNPUB}/subtitle.ass`);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: string }).error).toBe('not_published');
+  });
+
+  test('404 episode_not_found for an unknown id', async () => {
+    const res = await app.request(`/episodes/00000000-0000-0000-0000-0000000000ff/subtitle.ass`);
+    expect(res.status).toBe(404);
+  });
+});
+
 describe('GET /episodes/:id/subtitle.srt', () => {
   test('302-redirects a published episode to the presigned R2 url', async () => {
     const res = await app.request(`/episodes/${EP_PUB}/subtitle.srt`, { redirect: 'manual' });

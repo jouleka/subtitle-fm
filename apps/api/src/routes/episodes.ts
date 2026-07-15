@@ -82,6 +82,18 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
     const url = await presignGet({ bucket: 'peaks', key: episodePeaksKey(id) });
     return c.redirect(url, 302);
   })
+  .get('/:id/subtitle.ass', async (c) => {
+    const id = c.req.param('id');
+    const [ep] = await db
+      .select({ id: schema.episodes.id, status: schema.episodes.status })
+      .from(schema.episodes)
+      .where(eq(schema.episodes.id, id))
+      .limit(1);
+    if (!ep) return c.json({ error: 'episode_not_found' }, 404);
+    if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
+    const url = await presignGet({ bucket: 'media', key: publishedKeys(id).ass });
+    return c.redirect(url, 302);
+  })
   .get('/:id/subtitle.srt', async (c) => {
     const id = c.req.param('id');
     const [ep] = await db
@@ -91,7 +103,7 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: `subtitles/${id}/published.srt` });
+    const url = await presignGet({ bucket: 'media', key: publishedKeys(id).srt });
     return c.redirect(url, 302);
   })
   .get('/:id/subtitle.vtt', async (c) => {
@@ -103,7 +115,7 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: `subtitles/${id}/published.vtt` });
+    const url = await presignGet({ bucket: 'media', key: publishedKeys(id).vtt });
     return c.redirect(url, 302);
   })
   .post('/:id/publish', requireSession, async (c) => {
