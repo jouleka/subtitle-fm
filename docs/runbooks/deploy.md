@@ -64,9 +64,11 @@ Set these in each host's secret manager. **Secrets** must never be committed or 
 - `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` *(secrets)*; optional `R2_BUCKET_MEDIA`, `R2_BUCKET_PEAKS` (default to the existing bucket names).
 - `WORKER_WEBHOOK_SECRET` *(secret)* — verifies RunPod callbacks. **Must match** the value set on the RunPod endpoint.
 - `COLLAB_PORT` (only if api references it for links).
+- `COLLAB_INTERNAL_URL` — private HTTP origin for the collab service (exact snapshot capture/restore).
+- `COLLAB_SECRET` *(secret)* — must match the collab service; authenticates its internal snapshot API.
 
 ### `collab` (public)
-- `COLLAB_PORT` (default 1234), `DATABASE_URL`.
+- `COLLAB_PORT` (default 1234), `DATABASE_URL`, `COLLAB_SECRET` *(same value as api)*.
 
 ### `stremio` (public)
 - `STREMIO_PORT` (default 7000), `API_PUBLIC_URL` (to build subtitle URLs).

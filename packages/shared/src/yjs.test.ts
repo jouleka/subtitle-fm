@@ -8,6 +8,7 @@ import {
   DEFAULT_NEW_CUE_MS,
   deleteCue,
   hydrateCuesIntoDoc,
+  replaceCuesInDoc,
   insertCue,
   liveCuesFromDoc,
   liveCuesFromSnapshot,
@@ -59,6 +60,23 @@ describe("hydrateCuesIntoDoc", () => {
     const text = cueMap.get("text") as Y.Text;
     text.insert(5, " world");
     expect(cueMapToLive(cueMap).text).toBe("hello world");
+  });
+});
+
+describe("replaceCuesInDoc", () => {
+  test("replaces the visible cue list and tags one restore transaction", () => {
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [
+      sampleSeed,
+      { ...sampleSeed, id: "22222222-2222-2222-2222-222222222222", orderIndex: 1 },
+    ]);
+    const origins: unknown[] = [];
+    doc.on("afterTransaction", (transaction) => origins.push(transaction.origin));
+
+    replaceCuesInDoc(doc, [{ ...sampleSeed, text: "restored milestone" }]);
+
+    expect(liveCuesFromDoc(doc).map((cue) => cue.text)).toEqual(["restored milestone"]);
+    expect(origins).toContain("sfm-36-restore");
   });
 });
 

@@ -42,6 +42,19 @@ export function hydrateCuesIntoDoc(doc: Y.Doc, seeds: CueSeed[]): void {
   });
 }
 
+/**
+ * Replace the visible cue list with a stored milestone as a new CRDT
+ * transaction. This preserves Yjs history while broadcasting the restored
+ * state to currently connected editors.
+ */
+export function replaceCuesInDoc(doc: Y.Doc, seeds: CueSeed[]): void {
+  doc.transact(() => {
+    const yArr = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY);
+    if (yArr.length > 0) yArr.delete(0, yArr.length);
+    for (const seed of seeds) yArr.push([cueSeedToYMap(seed)]);
+  }, "sfm-36-restore");
+}
+
 function cueSeedToYMap(seed: CueSeed): Y.Map<unknown> {
   const m = new Y.Map<unknown>();
   m.set("id", seed.id);
