@@ -53,6 +53,26 @@
       </section>
     {/if}
 
+    <section class="billing-panel" aria-labelledby="billing-title">
+      <div>
+        <span class="eyebrow">Subscription</span>
+        <h2 id="billing-title">Scale your API access</h2>
+        <p>Lemon Squeezy handles checkout, tax, invoices, cancellation, and payment details.</p>
+      </div>
+      {#if data.billing.subscription}
+        <div class="current-plan">
+          <strong>{tierLabel} · {data.billing.subscription.status.replaceAll('_', ' ')}</strong>
+          <small>{data.billing.subscription.endsAt ? `Access ends ${formatDate(data.billing.subscription.endsAt)}` : `Renews ${formatDate(data.billing.subscription.renewsAt)}`}</small>
+          <form method="POST" action="?/portal"><button type="submit">Manage billing</button></form>
+        </div>
+      {:else}
+        <div class="plans">
+          <article><strong>Developer</strong><span>1,000 requests / day</span><small>For personal automations and Bazarr.</small><form method="POST" action="?/checkout"><input type="hidden" name="tier" value="dev" /><button type="submit">Choose Developer</button></form></article>
+          <article><strong>Pro</strong><span>Unlimited requests</span><small>For production integrations and teams.</small><form method="POST" action="?/checkout"><input type="hidden" name="tier" value="pro" /><button type="submit">Choose Pro</button></form></article>
+        </div>
+      {/if}
+    </section>
+
     <div class="dashboard-grid">
       <section class="panel">
         <div class="panel-heading">
@@ -122,6 +142,14 @@
   .secret-card h2 { margin: 0.2rem 0; font-size: 1rem; }
   .secret-card p { margin: 0; color: #6d6474; font-size: 0.78rem; }
   .secret-card > code { max-width: 420px; overflow: auto; border-radius: 0.45rem; background: #25202e; padding: 0.75rem; color: #ede9fe; white-space: nowrap; }
+  .billing-panel { display: grid; grid-template-columns: minmax(240px, .7fr) 1.3fr; gap: 1.5rem; align-items: center; margin-bottom: 1rem; border: 1px solid #d8cbea; border-radius: 1rem; background: #f2edfb; padding: 1.25rem; }
+  .billing-panel h2 { margin: .25rem 0; }
+  .billing-panel p { margin: 0; color: #746d79; font-size: .82rem; line-height: 1.5; }
+  .plans { display: grid; grid-template-columns: 1fr 1fr; gap: .7rem; }
+  .plans article, .current-plan { display: grid; gap: .45rem; border: 1px solid #ded6e7; border-radius: .75rem; background: white; padding: 1rem; }
+  .plans span { color: #6d28d9; font-size: .8rem; font-weight: 800; }
+  .plans small, .current-plan small { color: #817987; font-size: .7rem; }
+  .plans button, .current-plan button { margin-top: .3rem; }
   button { border: 0; border-radius: 0.55rem; background: #6d28d9; padding: 0.7rem 0.9rem; color: white; font: 800 0.78rem/1 inherit; cursor: pointer; }
   .dashboard-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 1rem; align-items: start; }
   .panel { border: 1px solid #e1dbe7; border-radius: 1rem; background: white; padding: 1.25rem; box-shadow: 0 15px 40px rgb(51 37 66 / 0.06); }
@@ -152,6 +180,7 @@
   @media (max-width: 900px) {
     .dashboard-grid { grid-template-columns: 1fr; }
     .quickstart { grid-row: 1; }
+    .billing-panel { grid-template-columns: 1fr; }
   }
   @media (max-width: 680px) {
     main { padding-top: 2rem; }
@@ -160,6 +189,7 @@
     .secret-card { grid-template-columns: 1fr; }
     .secret-card > code { max-width: 100%; }
     .create-form { align-items: stretch; flex-direction: column; }
+    .plans { grid-template-columns: 1fr; }
     input { width: 100%; }
     .key-row { grid-template-columns: 1fr auto; }
     .key-row dl { grid-column: 1 / -1; grid-row: 2; }
