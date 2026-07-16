@@ -71,7 +71,8 @@ Set these in each host's secret manager. **Secrets** must never be committed or 
 - `COLLAB_PORT` (default 1234), `DATABASE_URL`, `COLLAB_SECRET` *(same value as api)*.
 
 ### `stremio` (public)
-- `STREMIO_PORT` (default 7000), `API_PUBLIC_URL` (to build subtitle URLs).
+- `STREMIO_PORT` (default 7000; falls back to host-injected `PORT`), `API_PUBLIC_URL` (the stable public API origin used to resolve and serve subtitle URLs).
+- BeamUp can build the root `Dockerfile` without a build argument because it defaults to `APP=stremio`. Verify `https://<addon-host>/manifest.json` and a real `/subtitles/...json` response before publishing the manifest URL to Stremio's catalogue.
 
 ### `worker-runner` (private)
 - `DATABASE_URL`, `REDIS_URL`, `WORKER_CONCURRENCY` (default 2).

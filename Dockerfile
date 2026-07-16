@@ -18,7 +18,7 @@
 # the services that touch Postgres.
 FROM oven/bun:1 AS runtime
 
-ARG APP
+ARG APP=stremio
 WORKDIR /app
 
 # The whole monorepo (minus .dockerignore). bun install resolves the workspace
