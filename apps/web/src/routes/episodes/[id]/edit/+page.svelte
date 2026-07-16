@@ -468,7 +468,10 @@
     </section>
 
     <section class="pane pane-cues" class:tab-active={activeTab === "cues"}>
-      <PresenceRoster users={roster} />
+      <div class="cue-toolbar">
+        <PresenceRoster users={roster} />
+        <a href={`/episodes/${data.episode.id}/history`}>Compare snapshots</a>
+      </div>
       <ol
         class="cue-list"
         onfocusout={(e) => {
@@ -615,6 +618,22 @@
     list-style: none;
     padding: 0;
     margin: 0;
+  }
+  .cue-toolbar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 0.75rem;
+    min-height: 1.8rem;
+    margin-bottom: 0.45rem;
+  }
+  .cue-toolbar a {
+    color: #4b5563;
+    font-size: 0.8rem;
+    text-decoration: none;
+  }
+  .cue-toolbar a:hover {
+    text-decoration: underline;
   }
   .placeholder,
   .empty {

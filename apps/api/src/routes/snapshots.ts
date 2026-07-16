@@ -1,8 +1,10 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, inArray, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema } from '@subtitle-fm/db';
+import { threeWayCueListDiff } from '@subtitle-fm/shared';
+import { liveCuesFromSnapshot } from '@subtitle-fm/shared/yjs';
 import { db } from '../lib/db';
 import { fetchCurrentDocumentState, restoreCollaborativeSnapshot } from '../lib/collab';
 import { requireSession, type AuthVariables } from '../lib/session';
@@ -15,6 +17,16 @@ const createMilestoneSchema = z.object({
     .max(64)
     .regex(/^[a-z0-9][a-z0-9._-]*$/, 'lowercase letters, digits, dots, dashes, underscores'),
 });
+
+const compareSnapshotsSchema = z
+  .object({
+    base: z.string().uuid(),
+    ours: z.string().uuid(),
+    theirs: z.string().uuid(),
+  })
+  .refine(({ base, ours, theirs }) => new Set([base, ours, theirs]).size === 3, {
+    message: 'base, ours, and theirs must be different snapshots',
+  });
 
 async function episodeExists(episodeId: string): Promise<boolean> {
   const [episode] = await db
@@ -41,6 +53,38 @@ export const snapshots = new Hono<{ Variables: AuthVariables }>()
       .where(and(eq(schema.snapshots.episodeId, episodeId), ne(schema.snapshots.label, 'live')))
       .orderBy(desc(schema.snapshots.createdAt));
     return c.json({ snapshots: rows });
+  })
+  .get('/compare', requireSession, zValidator('query', compareSnapshotsSchema), async (c) => {
+    const episodeId = c.req.param('episodeId') as string;
+    const selected = c.req.valid('query');
+    const ids = [selected.base, selected.ours, selected.theirs];
+    const rows = await db
+      .select({
+        id: schema.snapshots.id,
+        label: schema.snapshots.label,
+        createdAt: schema.snapshots.createdAt,
+        yjsState: schema.snapshots.yjsState,
+      })
+      .from(schema.snapshots)
+      .where(and(eq(schema.snapshots.episodeId, episodeId), inArray(schema.snapshots.id, ids)));
+    if (rows.length !== 3) return c.json({ error: 'snapshot_not_found' }, 404);
+
+    const byId = new Map(rows.map((snapshot) => [snapshot.id, snapshot]));
+    const base = byId.get(selected.base)!;
+    const ours = byId.get(selected.ours)!;
+    const theirs = byId.get(selected.theirs)!;
+    return c.json({
+      snapshots: {
+        base: { id: base.id, label: base.label, createdAt: base.createdAt },
+        ours: { id: ours.id, label: ours.label, createdAt: ours.createdAt },
+        theirs: { id: theirs.id, label: theirs.label, createdAt: theirs.createdAt },
+      },
+      diff: threeWayCueListDiff(
+        liveCuesFromSnapshot(base.yjsState),
+        liveCuesFromSnapshot(ours.yjsState),
+        liveCuesFromSnapshot(theirs.yjsState),
+      ),
+    });
   })
   .post('/', requireSession, zValidator('json', createMilestoneSchema), async (c) => {
     const episodeId = c.req.param('episodeId') as string;

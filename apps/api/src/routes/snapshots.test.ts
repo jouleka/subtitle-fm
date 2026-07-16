@@ -33,7 +33,11 @@ mock.module('../lib/collab', () => ({
 const { app } = await import('../index');
 
 function stateWithText(text: string): Uint8Array {
-  const cue: CueSeed = {
+  return stateWithCues([seed(text)]);
+}
+
+function seed(text: string, overrides: Partial<CueSeed> = {}): CueSeed {
+  return {
     id: crypto.randomUUID(),
     orderIndex: 0,
     startMs: 0,
@@ -43,9 +47,13 @@ function stateWithText(text: string): Uint8Array {
     speakerId: null,
     confidence: null,
     needsReview: false,
+    ...overrides,
   };
+}
+
+function stateWithCues(cues: CueSeed[]): Uint8Array {
   const doc = new Y.Doc();
-  hydrateCuesIntoDoc(doc, [cue]);
+  hydrateCuesIntoDoc(doc, cues);
   return Y.encodeStateAsUpdate(doc);
 }
 
@@ -103,6 +111,63 @@ describe('episode snapshot milestones (SFM-36)', () => {
     expect(body.snapshots).toHaveLength(1);
     expect(body.snapshots[0]!.label).toBe('first-pass');
     expect(body.snapshots[0]!.yjsState).toBeUndefined();
+  });
+
+  test('GET compare returns a three-way cue-list diff without exposing snapshot bytes', async () => {
+    const stableId = '36363636-3636-4363-8363-363636360001';
+    const [base, ours, theirs] = await db
+      .insert(schema.snapshots)
+      .values([
+        {
+          episodeId: EPISODE_ID,
+          label: 'base',
+          yjsState: stateWithCues([seed('base', { id: stableId })]),
+        },
+        {
+          episodeId: EPISODE_ID,
+          label: 'ours',
+          yjsState: stateWithCues([seed('our edit', { id: stableId })]),
+        },
+        {
+          episodeId: EPISODE_ID,
+          label: 'theirs',
+          yjsState: stateWithCues([
+            seed('base', { id: stableId }),
+            seed('added', { orderIndex: 1, startMs: 2_000, endMs: 3_000 }),
+          ]),
+        },
+      ])
+      .returning({ id: schema.snapshots.id });
+    getSessionMock.mockResolvedValueOnce({ user: USER, session: SESSION });
+
+    const query = new URLSearchParams({
+      base: base!.id,
+      ours: ours!.id,
+      theirs: theirs!.id,
+    });
+    const response = await app.request(`/episodes/${EPISODE_ID}/snapshots/compare?${query}`);
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      snapshots: { base: Record<string, unknown> };
+      diff: { summary: Record<string, number>; rows: Array<Record<string, unknown>> };
+    };
+    expect(body.diff.summary).toMatchObject({ added: 1, modified: 1, conflicts: 0 });
+    expect(body.diff.rows).toHaveLength(2);
+    expect(body.snapshots.base.yjsState).toBeUndefined();
+  });
+
+  test('GET compare is authenticated and rejects snapshots from another episode', async () => {
+    const ids = [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()];
+    const query = new URLSearchParams({ base: ids[0]!, ours: ids[1]!, theirs: ids[2]! });
+    getSessionMock.mockResolvedValueOnce(null);
+    expect((await app.request(`/episodes/${EPISODE_ID}/snapshots/compare?${query}`)).status).toBe(
+      401,
+    );
+
+    getSessionMock.mockResolvedValueOnce({ user: USER, session: SESSION });
+    expect((await app.request(`/episodes/${EPISODE_ID}/snapshots/compare?${query}`)).status).toBe(
+      404,
+    );
   });
 
   test('POST captures the active collaborative document as an immutable milestone', async () => {
