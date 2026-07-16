@@ -2,16 +2,18 @@ import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
 import { z } from 'zod';
 import { and, asc, eq } from 'drizzle-orm';
+import * as Y from 'yjs';
 import { schema } from '@subtitle-fm/db';
 import { advanceEpisodeStatus } from '@subtitle-fm/db';
 import { db } from '../lib/db';
-import { liveCuesFromSnapshot, type LiveCue } from '@subtitle-fm/shared/yjs';
-import { serializeAss, defaultParsedAss, toSrt, toVtt } from '@subtitle-fm/ass';
+import { hydrateCuesIntoDoc, liveCuesFromSnapshot, type LiveCue } from '@subtitle-fm/shared/yjs';
+import { JOB_OPTS_DEFAULT, publishedSubtitleKeys, type PublishJob } from '@subtitle-fm/shared';
 import { log } from '../lib/log';
 import { requireSession, type AuthVariables } from '../lib/session';
-import { putObject, presignGet } from '../lib/r2';
+import { presignGet } from '../lib/r2';
 import { ingestEpisode } from '../lib/ingest';
 import { episodePeaksKey } from '../lib/artifacts';
+import { publishQueue } from '../lib/queue';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
@@ -31,13 +33,6 @@ const bulkEpisodesSchema = z.object({
   showId: z.string().min(1),
   episodes: z.array(bulkEpisodeItemSchema).min(1).max(BULK_MAX),
 });
-
-// Canonical published-artifact keys for an episode. One scheme, two return
-// sites (idempotent re-publish + fresh publish) — keep them from drifting.
-function publishedKeys(id: string) {
-  const base = `subtitles/${id}/published`;
-  return { ass: `${base}.ass`, srt: `${base}.srt`, vtt: `${base}.vtt` };
-}
 
 export const episodes = new Hono<{ Variables: AuthVariables }>()
   .get('/', async (c) => {
@@ -91,7 +86,7 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: publishedKeys(id).ass });
+    const url = await presignGet({ bucket: 'media', key: publishedSubtitleKeys(id).ass });
     return c.redirect(url, 302);
   })
   .get('/:id/subtitle.srt', async (c) => {
@@ -103,7 +98,7 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: publishedKeys(id).srt });
+    const url = await presignGet({ bucket: 'media', key: publishedSubtitleKeys(id).srt });
     return c.redirect(url, 302);
   })
   .get('/:id/subtitle.vtt', async (c) => {
@@ -115,7 +110,7 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: publishedKeys(id).vtt });
+    const url = await presignGet({ bucket: 'media', key: publishedSubtitleKeys(id).vtt });
     return c.redirect(url, 302);
   })
   .post('/:id/publish', requireSession, async (c) => {
@@ -126,12 +121,15 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .where(eq(schema.episodes.id, id))
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
-    // Already published: idempotent no-op. Do NOT re-serialize/overwrite the
-    // canonical artifact with possibly-newer edited state. (A failed status flip
-    // leaves status non-published, so a genuine retry still completes below.)
+    const keys = publishedSubtitleKeys(id);
+    // Both terminal and in-flight retries are idempotent. The latter matters
+    // because publish now crosses Postgres and Redis rather than completing in
+    // one request.
     if (ep.status === 'published') {
-      const keys = publishedKeys(id);
       return c.json({ status: 'published', key: keys.ass, keys });
+    }
+    if (ep.status === 'publishing') {
+      return c.json({ status: 'publishing', key: keys.ass, keys }, 202);
     }
     if (!['ready_for_edit', 'in_review'].includes(ep.status))
       return c.json({ error: 'not_publishable', currentStatus: ep.status }, 409);
@@ -142,8 +140,10 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .where(and(eq(schema.snapshots.episodeId, id), eq(schema.snapshots.label, 'live')))
       .limit(1);
     let cues: LiveCue[];
+    let snapshotState: Uint8Array;
     if (snap) {
-      cues = liveCuesFromSnapshot(snap.yjsState);
+      snapshotState = new Uint8Array(snap.yjsState);
+      cues = liveCuesFromSnapshot(snapshotState);
     } else {
       const rows = await db
         .select()
@@ -161,40 +161,74 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
         confidence: r.confidence,
         needsReview: r.needsReview,
       }));
+      const doc = new Y.Doc();
+      hydrateCuesIntoDoc(doc, cues);
+      snapshotState = Y.encodeStateAsUpdate(doc);
     }
 
     if (cues.length === 0) return c.json({ error: 'no_cues' }, 409);
     const unreviewed = cues.filter((cue) => cue.needsReview).length;
     if (unreviewed > 0) return c.json({ error: 'unreviewed_cues', count: unreviewed }, 409);
 
-    const keys = publishedKeys(id);
-
-    let ass: string, srt: string, vtt: string;
-    try {
-      const parsed = defaultParsedAss(cues);
-      ass = serializeAss(parsed); // throws on styleName/speaker comma or literal newline → 422 before srt/vtt or any upload
-      srt = toSrt(parsed);
-      vtt = toVtt(parsed);
-    } catch (e) {
-      return c.json({ error: 'serialize_failed', detail: (e as Error).message }, 422);
-    }
-
-    try {
-      // artifacts before the status flip; any failure leaves status unpublished (retry-safe)
-      await putObject('media', keys.ass, ass, 'text/plain; charset=utf-8');
-      await putObject('media', keys.srt, srt, 'application/x-subrip; charset=utf-8');
-      await putObject('media', keys.vtt, vtt, 'text/vtt; charset=utf-8');
-    } catch (e) {
-      return c.json({ error: 'r2_upload_failed', detail: (e as Error).message }, 502);
-    }
-
     const result = await advanceEpisodeStatus(db, id, {
       from: ['ready_for_edit', 'in_review'],
-      to: 'published',
+      to: 'publishing',
     });
-    if (!result.advanced && result.currentStatus !== 'published')
+    if (!result.advanced) {
+      if (result.currentStatus === 'publishing')
+        return c.json({ status: 'publishing', key: keys.ass, keys }, 202);
+      if (result.currentStatus === 'published')
+        return c.json({ status: 'published', key: keys.ass, keys });
       return c.json({ error: 'not_publishable', currentStatus: result.currentStatus }, 409);
-    return c.json({ status: 'published', key: keys.ass, keys });
+    }
+
+    const pipelineRunId = crypto.randomUUID();
+    const snapshotId = crypto.randomUUID();
+    // Unlike the mutable `live` row, this named milestone is the exact source
+    // the worker must publish even if editing resumes before it dequeues.
+    const snapshotLabel = 'published-v1';
+    try {
+      await db.insert(schema.snapshots).values({
+        id: snapshotId,
+        episodeId: id,
+        label: snapshotLabel,
+        yjsState: snapshotState,
+        createdBy: c.get('user')!.id,
+      });
+
+      const job: PublishJob = {
+        episodeId: id,
+        pipelineRunId,
+        snapshotId,
+        formats: ['ass', 'srt', 'vtt'],
+      };
+      await publishQueue.add('publish', job, {
+        jobId: `publish-${snapshotId}`,
+        ...JOB_OPTS_DEFAULT,
+      });
+    } catch (e) {
+      // Redis is not transactional with Postgres. Compensate so a retry is
+      // possible and never leave an episode permanently stuck in publishing.
+      await db.transaction(async (tx) => {
+        await tx.delete(schema.snapshots).where(eq(schema.snapshots.id, snapshotId));
+        await tx
+          .update(schema.episodes)
+          .set({ status: ep.status })
+          .where(and(eq(schema.episodes.id, id), eq(schema.episodes.status, 'publishing')));
+      });
+      log.error({ episodeId: id, err: String(e) }, 'publish.enqueue_failed');
+      return c.json({ error: 'publish_enqueue_failed' }, 503);
+    }
+
+    return c.json(
+      {
+        status: 'publishing',
+        key: keys.ass,
+        keys,
+        snapshot: { id: snapshotId, label: snapshotLabel },
+      },
+      202,
+    );
   })
   // Declared before POST '/' so the static segment is unambiguous. Bulk ingest:
   // one show, many episodes, idempotent per item. Partial success is normal, so

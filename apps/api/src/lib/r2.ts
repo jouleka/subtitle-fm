@@ -89,9 +89,8 @@ export async function presignGet(opts: PresignOpts): Promise<string> {
 }
 
 /**
- * Hard-delete an R2 object. Use sparingly — the `media` bucket should have
- * a 24-hour lifecycle rule configured in the Cloudflare dashboard that
- * makes most deletions automatic. This is for the explicit-cleanup path.
+ * Hard-delete an R2 object from an API-owned explicit cleanup path. Delayed
+ * post-publish cleanup is consumed by worker-runner's cleanup-media queue.
  */
 export async function deleteObject(bucket: R2BucketName, key: string): Promise<void> {
   await getClient().send(

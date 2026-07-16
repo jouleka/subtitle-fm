@@ -25,18 +25,27 @@ const queues = {
   [QUEUE_NAMES.publish]: new Queue<JobPayloadByQueue['publish']>(QUEUE_NAMES.publish, {
     connection,
   }),
+  [QUEUE_NAMES.cleanupMedia]: new Queue<JobPayloadByQueue['cleanup-media']>(
+    QUEUE_NAMES.cleanupMedia,
+    { connection },
+  ),
 } as const;
 
 export async function enqueue<Q extends QueueName>(
   name: Q,
   payload: JobPayloadByQueue[Q],
   jobId?: string,
+  delayMs?: number,
 ): Promise<void> {
   // We've already enforced (name, payload) pairing via the Q generic at the
   // function boundary. BullMQ's per-queue name-typing is messy through
   // indexed access, so loosen to Queue<unknown> just for the .add call.
   const queue = queues[name] as unknown as Queue<unknown>;
-  await queue.add(name, payload, { jobId, ...JOB_OPTS_DEFAULT });
+  await queue.add(name, payload, {
+    jobId,
+    ...JOB_OPTS_DEFAULT,
+    ...(delayMs ? { delay: delayMs } : {}),
+  });
 }
 
 /**

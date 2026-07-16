@@ -7,6 +7,7 @@ import { handlePreprocess } from './handlers/preprocess';
 import { handleTranscribe } from './handlers/transcribe';
 import { handleTranslate } from './handlers/translate';
 import { handlePublish } from './handlers/publish';
+import { handleCleanupMedia } from './handlers/cleanup-media';
 
 const concurrency = Number(process.env.WORKER_CONCURRENCY ?? 2);
 
@@ -49,6 +50,7 @@ const workers: Worker[] = [
   startWorker(QUEUE_NAMES.transcribe, handleTranscribe),
   startWorker(QUEUE_NAMES.translate, handleTranslate),
   startWorker(QUEUE_NAMES.publish, handlePublish),
+  startWorker(QUEUE_NAMES.cleanupMedia, handleCleanupMedia),
 ];
 
 let shuttingDown = false;

@@ -42,7 +42,7 @@ export const uploads = new Hono()
    *
    * Returns:
    *  - uploadUrl: presigned PUT (15 min)
-   *  - getUrl:    presigned GET (24 hr) — usable as POST /episodes sourceUrl
+   *  - getUrl:    presigned GET (7 days) — usable as POST /episodes sourceUrl
    *  - bucket/key: canonical R2 location, for downstream worker fetches
    */
   .post('/source', zValidator('json', createUploadSchema), async (c) => {

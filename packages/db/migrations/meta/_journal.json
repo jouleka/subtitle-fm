@@ -64,6 +64,20 @@
       "when": 1781356037586,
       "tag": "0008_white_diamondback",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784206876597,
+      "tag": "0009_cute_la_nuit",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784207216914,
+      "tag": "0010_aspiring_wendell_rand",
+      "breakpoints": true
     }
   ]
 }

@@ -62,7 +62,15 @@ export async function advanceEpisodeStatus(
  */
 export async function failEpisode(db: Db, episodeId: string): Promise<AdvanceResult> {
   return advanceEpisodeStatus(db, episodeId, {
-    from: ['uploaded', 'preprocessing', 'transcribing', 'translating', 'ready_for_edit', 'in_review'],
+    from: [
+      'uploaded',
+      'preprocessing',
+      'transcribing',
+      'translating',
+      'ready_for_edit',
+      'in_review',
+      'publishing',
+    ],
     to: 'failed',
   });
 }

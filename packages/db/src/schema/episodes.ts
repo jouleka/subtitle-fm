@@ -18,6 +18,7 @@ export const episodeStatusEnum = pgEnum('episode_status', [
   'translating',
   'ready_for_edit',
   'in_review',
+  'publishing',
   'published',
   'failed',
 ]);
@@ -35,6 +36,7 @@ export const episodes = pgTable(
     sourceLanguage: text('source_language').notNull().default('ja'),
     targetLanguage: text('target_language').notNull().default('en'),
     status: episodeStatusEnum('status').notNull().default('uploaded'),
+    sourceKey: text('source_key'),
     audioUrl: text('audio_url'),
     peaksUrl: text('peaks_url'),
     durationMs: integer('duration_ms'),

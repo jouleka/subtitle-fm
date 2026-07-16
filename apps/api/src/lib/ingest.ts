@@ -5,6 +5,7 @@ import { preprocessQueue } from './queue';
 import { JOB_OPTS_DEFAULT, type PreprocessJob } from '@subtitle-fm/shared';
 import { log } from './log';
 import type { CatalogShow } from './catalog-schema';
+import { ownedSourceKeyFromUrl } from './uploads';
 
 export type IngestResult =
   | { status: 'created'; episode: typeof schema.episodes.$inferSelect }
@@ -36,6 +37,7 @@ export async function ingestEpisode(input: {
       sourceLanguage: input.sourceLanguage,
       targetLanguage: input.targetLanguage,
       status: 'uploaded',
+      sourceKey: ownedSourceKeyFromUrl(input.sourceUrl),
     })
     .onConflictDoNothing({ target: [schema.episodes.showId, schema.episodes.number] })
     .returning();

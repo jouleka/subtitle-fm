@@ -3,6 +3,7 @@ import {
   extForContentType,
   generateSourceKey,
   MAX_UPLOAD_BYTES,
+  ownedSourceKeyFromUrl,
   SOURCE_CONTENT_TYPES,
   UnsupportedContentTypeError,
 } from './uploads';
@@ -41,6 +42,27 @@ describe('extForContentType', () => {
       expect(e).toBeInstanceOf(UnsupportedContentTypeError);
       expect((e as Error).message).toContain('application/zip');
     }
+  });
+});
+
+describe('ownedSourceKeyFromUrl', () => {
+  test('extracts only application-owned upload keys from R2 presigned URLs', () => {
+    const key = 'uploads/11111111-1111-4111-8111-111111111111.mkv';
+    expect(
+      ownedSourceKeyFromUrl(
+        `https://subtitle-fm-media.account.r2.cloudflarestorage.com/${key}?X-Amz-Signature=x`,
+      ),
+    ).toBe(key);
+  });
+
+  test('refuses external URLs and malformed upload paths (intent: cleanup never deletes unowned media)', () => {
+    expect(ownedSourceKeyFromUrl('https://example.com/uploads/video.mkv')).toBeNull();
+    expect(
+      ownedSourceKeyFromUrl('https://account.r2.cloudflarestorage.com/uploads/../../published.ass'),
+    ).toBeNull();
+    expect(
+      ownedSourceKeyFromUrl('https://account.r2.cloudflarestorage.com/uploads/%zz.mkv'),
+    ).toBeNull();
   });
 });
 

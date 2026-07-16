@@ -9,6 +9,7 @@ export type EpisodeStatus =
   | "translating"
   | "ready_for_edit"
   | "in_review"
+  | "publishing"
   | "published"
   | "failed";
 
@@ -20,6 +21,7 @@ export interface Episode {
   sourceLanguage: string;
   targetLanguage: string;
   status: EpisodeStatus;
+  sourceKey: string | null;
   audioUrl: string | null;
   peaksUrl: string | null;
   durationMs: number | null;

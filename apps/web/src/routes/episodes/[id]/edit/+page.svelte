@@ -171,6 +171,7 @@
   }
 
   let publishing = $state(false);
+  let publishQueued = $state(false);
   let publishMsg = $state<string | null>(null);
   const unreviewedCount = $derived(cues.filter((c) => c.needsReview).length);
 
@@ -184,9 +185,15 @@
       });
       const body = await res.json().catch(() => ({}));
       const keys = (body as { keys?: Record<string, string> }).keys;
-      publishMsg = res.ok
-        ? `Published → ${keys ? Object.keys(keys).join(", ") : ((body as { key?: string }).key ?? "ok")}`
-        : `Publish failed (${res.status}): ${(body as { error?: string }).error ?? "error"}`;
+      const status = (body as { status?: string }).status;
+      if (res.ok && status === "publishing") {
+        publishQueued = true;
+        publishMsg = `Publishing queued → ${keys ? Object.keys(keys).join(", ") : "ass, srt, vtt"}`;
+      } else {
+        publishMsg = res.ok
+          ? `Published → ${keys ? Object.keys(keys).join(", ") : ((body as { key?: string }).key ?? "ok")}`
+          : `Publish failed (${res.status}): ${(body as { error?: string }).error ?? "error"}`;
+      }
     } catch (e) {
       publishMsg = `Publish failed: ${(e as Error).message}`;
     } finally {
@@ -194,7 +201,7 @@
     }
   }
 
-  const ready = $derived(data.episode.status === "ready_for_edit");
+  const ready = $derived(["ready_for_edit", "in_review"].includes(data.episode.status));
   const mediaUrl = $derived(data.episode.audioUrl);
 
   let provider: HocuspocusProvider | null = null;
@@ -416,9 +423,19 @@
 
 {#if !ready}
   <section class="status-placeholder">
-    <h1>Episode still processing</h1>
+    <h1>
+      {data.episode.status === "publishing"
+        ? "Publishing subtitles"
+        : data.episode.status === "published"
+          ? "Episode published"
+          : "Episode still processing"}
+    </h1>
     <p>Current stage: <strong>{data.episode.status}</strong></p>
-    <p>Refresh once the pipeline reaches <code>ready_for_edit</code>.</p>
+    {#if data.episode.status === "publishing"}
+      <p>Refresh once the publish worker finishes.</p>
+    {:else if data.episode.status !== "published"}
+      <p>Refresh once the pipeline reaches <code>ready_for_edit</code>.</p>
+    {/if}
   </section>
 {:else}
   <main class="editor">
@@ -430,10 +447,15 @@
       <span class="conn">collab: {connectionStatus}</span>
       <button
         class="publish-btn"
-        disabled={publishing || unreviewedCount > 0 || data.episode.status === "published"}
-        title={unreviewedCount > 0 ? `${unreviewedCount} cue(s) need review` : "Publish the finalized .ass"}
+        disabled={publishing ||
+          publishQueued ||
+          unreviewedCount > 0 ||
+          data.episode.status === "published"}
+        title={unreviewedCount > 0
+          ? `${unreviewedCount} cue(s) need review`
+          : "Publish finalized ASS, SRT, and VTT subtitles"}
         onclick={publish}
-      >{publishing ? "Publishing…" : "Publish"}</button>
+      >{publishing ? "Queuing…" : publishQueued ? "Publishing…" : "Publish"}</button>
       {#if publishMsg}<span class="publish-msg">{publishMsg}</span>{/if}
     </nav>
 

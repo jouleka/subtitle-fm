@@ -9,6 +9,7 @@ export const QUEUE_NAMES = {
   transcribe: 'transcribe',
   translate: 'translate',
   publish: 'publish',
+  cleanupMedia: 'cleanup-media',
 } as const;
 
 /**
@@ -57,7 +58,17 @@ export interface TranslateJob {
 export interface PublishJob {
   episodeId: string;
   pipelineRunId: PipelineRunId;
+  /** Immutable snapshot captured by the API at the publish gate. */
+  snapshotId: string;
   formats: ReadonlyArray<'ass' | 'srt' | 'vtt'>;
+}
+
+export interface CleanupMediaJob {
+  episodeId: string;
+  objects: ReadonlyArray<{
+    bucket: 'media' | 'peaks';
+    key: string;
+  }>;
 }
 
 export type JobPayloadByQueue = {
@@ -65,4 +76,5 @@ export type JobPayloadByQueue = {
   transcribe: TranscribeJob;
   translate: TranslateJob;
   publish: PublishJob;
+  'cleanup-media': CleanupMediaJob;
 };
