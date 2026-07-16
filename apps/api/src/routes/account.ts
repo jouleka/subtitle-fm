@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, gte, isNull } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, isNull } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema } from '@subtitle-fm/db';
 import { API_DAILY_LIMITS, generateApiKey } from '../lib/api-access';
@@ -19,6 +19,15 @@ function utcDay(date: Date): string {
 
 export const account = new Hono<{ Variables: AuthVariables }>()
   .use('*', requireSession)
+  .get('/first-contribution', async (c) => {
+    const [episode] = await db
+      .select({ episodeId: schema.episodes.id })
+      .from(schema.episodes)
+      .where(inArray(schema.episodes.status, ['ready_for_edit', 'in_review']))
+      .orderBy(asc(schema.episodes.createdAt))
+      .limit(1);
+    return c.json({ episodeId: episode?.episodeId ?? null });
+  })
   .get('/billing', async (c) => {
     const [subscription] = await db
       .select({

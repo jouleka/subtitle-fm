@@ -3,6 +3,8 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { eq } from "drizzle-orm";
 import { schema } from "@subtitle-fm/db";
 import { db } from "./db";
+import { sendDiscordWelcome } from "./discord-onboarding";
+import { log } from "./log";
 
 const HANDLE_MAX_SUFFIX = 999;
 
@@ -78,6 +80,7 @@ export const auth = betterAuth({
         name: profile.username, // writes to "handle" column via fields.name
         discordId: profile.id,
         email: profile.email ?? `${profile.id}@discord.placeholder.local`,
+        role: "editor",
       }),
     },
   },
@@ -89,6 +92,16 @@ export const auth = betterAuth({
           const base = ((user as { name?: string }).name) ?? "user";
           const resolved = await resolveHandleConflict(base);
           return { data: { ...user, name: resolved } };
+        },
+        after: async (user) => {
+          const discordId = (user as { discordId?: string | null }).discordId;
+          if (!discordId) return;
+          try {
+            const result = await sendDiscordWelcome(discordId);
+            log.info({ userId: user.id, result }, "discord.onboarding.welcome");
+          } catch (error) {
+            log.warn({ userId: user.id, error: String(error) }, "discord.onboarding.failed");
+          }
         },
       },
     },
