@@ -13,12 +13,16 @@ test('parses a kitsu series id', () => {
 test('parses a mal series id', () => {
   expect(parseStremioSubtitleId('series', 'mal:99:3')).toEqual({ source: 'mal', externalId: '99', episode: 3 });
 });
+test('parses an AniList series id for Bazarr anime lookup', () => {
+  expect(parseStremioSubtitleId('series', 'anilist:21:4')).toEqual({ source: 'anilist', externalId: '21', episode: 4 });
+});
 test('parses an imdb movie id (bare tt -> episode 1)', () => {
   expect(parseStremioSubtitleId('movie', 'tt0111161')).toEqual({ source: 'imdb', externalId: 'tt0111161', episode: 1 });
 });
-test('parses kitsu/mal movie ids -> episode 1', () => {
+test('parses kitsu/mal/anilist movie ids -> episode 1', () => {
   expect(parseStremioSubtitleId('movie', 'kitsu:42')).toEqual({ source: 'kitsu', externalId: '42', episode: 1 });
   expect(parseStremioSubtitleId('movie', 'mal:99')).toEqual({ source: 'mal', externalId: '99', episode: 1 });
+  expect(parseStremioSubtitleId('movie', 'anilist:21')).toEqual({ source: 'anilist', externalId: '21', episode: 1 });
 });
 test('returns null for a malformed movie id', () => {
   expect(parseStremioSubtitleId('movie', 'anidb:1')).toBeNull();

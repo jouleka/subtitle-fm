@@ -1,0 +1,51 @@
+diff --git a/bazarr/app/config.py b/bazarr/app/config.py
+index 4e44ae2..167032e 100644
+--- a/bazarr/app/config.py
++++ b/bazarr/app/config.py
+@@ -404,6 +404,10 @@ validators = [
+     Validator('jimaku.enable_archives_download', must_exist=True, default=False, is_type_of=bool),
+     Validator('jimaku.enable_ai_subs', must_exist=True, default=False, is_type_of=bool),
+ 
++    # subtitlefm section
++    Validator('subtitlefm.api_key', must_exist=True, default='', is_type_of=str),
++    Validator('subtitlefm.api_url', must_exist=True, default='https://api.subtitle.fm', is_type_of=str),
++
+     # titlovi section
+     Validator('titlovi.username', must_exist=True, default='', is_type_of=str, cast=str),
+     Validator('titlovi.password', must_exist=True, default='', is_type_of=str, cast=str),
+diff --git a/bazarr/app/get_providers.py b/bazarr/app/get_providers.py
+index 63c65b5..ca78bb3 100644
+--- a/bazarr/app/get_providers.py
++++ b/bazarr/app/get_providers.py
+@@ -303,6 +303,10 @@ def get_providers_auth():
+             'enable_archives_download': settings.jimaku.enable_archives_download,
+             'enable_ai_subs': settings.jimaku.enable_ai_subs,
+         },
++        'subtitlefm': {
++            'api_key': settings.subtitlefm.api_key,
++            'api_url': settings.subtitlefm.api_url,
++        },
+         'ktuvit': {
+             'email': settings.ktuvit.email,
+             'hashed_password': settings.ktuvit.hashed_password,
+diff --git a/frontend/src/pages/Settings/Providers/list.ts b/frontend/src/pages/Settings/Providers/list.ts
+index 4ef4506..ed1f813 100644
+--- a/frontend/src/pages/Settings/Providers/list.ts
++++ b/frontend/src/pages/Settings/Providers/list.ts
+@@ -262,6 +262,16 @@ export const ProviderList: Readonly<ProviderInfo[]> = [
+       },
+     ],
+   },
++  {
++    key: "subtitlefm",
++    name: "Subtitle.fm",
++    description: "Community-polished anime subtitles",
++    message: "Create an API key in your Subtitle.fm dashboard.",
++    inputs: [
++      { type: "password", key: "api_key", name: "API key" },
++      { type: "text", key: "api_url", name: "API URL" },
++    ],
++  },
+   { key: "hosszupuska", description: "Hungarian Subtitles Provider" },
+   {
+     key: "karagarga",

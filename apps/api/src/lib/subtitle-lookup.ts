@@ -13,7 +13,9 @@ export async function lookupPublishedSubtitles(type: string, id: string, request
       ? schema.shows.imdbId
       : parsed.source === 'kitsu'
         ? schema.shows.kitsuId
-        : schema.shows.malId;
+        : parsed.source === 'anilist'
+          ? schema.shows.anilistId
+          : schema.shows.malId;
   const [show] = await db
     .select({ id: schema.shows.id })
     .from(schema.shows)

@@ -27,6 +27,7 @@ beforeAll(async () => {
       kitsuId: 'kit59',
       imdbId: 'tt59',
       malId: 'mal59',
+      anilistId: 'ani59',
     });
   await db.insert(schema.seasons).values([
     { id: SEASON_1, showId: SHOW, number: 1, title: 'Season 1' },
@@ -106,6 +107,15 @@ describe('GET /stremio/subtitles/:type/:id', () => {
       const res = await app.request(`/stremio/subtitles/series/${encodeURIComponent(id)}`);
       expect(((await res.json()) as { subtitles: unknown[] }).subtitles.length).toBe(1);
     }
+  });
+  test('anilist id resolves a published anime episode for the Bazarr provider', async () => {
+    const res = await app.request(
+      `/v1/subtitles/series/${encodeURIComponent('anilist:ani59:5')}`,
+      { headers: { 'x-forwarded-for': `sfm42-${crypto.randomUUID()}` } },
+    );
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { subtitles: { url: string }[] };
+    expect(body.subtitles[0]!.url.endsWith(`/episodes/${EP_PUB}/subtitle.srt`)).toBe(true);
   });
   test('imdb season selects the matching per-season episode', async () => {
     const res = await app.request(`/stremio/subtitles/series/${encodeURIComponent('tt59:2:5')}`);
