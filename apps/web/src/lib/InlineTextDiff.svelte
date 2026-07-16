@@ -1,5 +1,6 @@
 <script lang="ts">
   import type { TextDiffSegment } from '@subtitle-fm/shared';
+  import { m } from '$lib/paraglide/messages';
 
   let { segments }: { segments: TextDiffSegment[] } = $props();
 </script>
@@ -14,7 +15,7 @@
       <span>{segment.text}</span>
     {/if}
     {#if segment.conflict}
-      <sup class="conflict-marker" title="Both sides changed the same base words" aria-label="text conflict">!</sup>
+      <sup class="conflict-marker" title={m.text_conflict_title()} aria-label={m.text_conflict_label()}>!</sup>
     {/if}
   {/each}
 </span>

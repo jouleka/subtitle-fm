@@ -5,6 +5,7 @@
   import { classifyCueKeydown } from "$lib/cue-keys";
   import { decorateWithRemoteCarets } from "$lib/remote-carets";
   import CueHistory from "$lib/CueHistory.svelte";
+  import { m } from "$lib/paraglide/messages";
 
   let {
     cue,
@@ -204,7 +205,7 @@
       bind:this={startEl}
       onblur={commitStart}
       onkeydown={(e) => onTimeKeydown(e, "start")}
-      aria-label={`cue ${cue.orderIndex + 1} start`}
+      aria-label={m.cue_start_label({ number: cue.orderIndex + 1 })}
     />
     <span class="dash">–</span>
     <input
@@ -212,7 +213,7 @@
       bind:this={endEl}
       onblur={commitEnd}
       onkeydown={(e) => onTimeKeydown(e, "end")}
-      aria-label={`cue ${cue.orderIndex + 1} end`}
+      aria-label={m.cue_end_label({ number: cue.orderIndex + 1 })}
     />
   </span>
   <div class="cue-text-wrap">
@@ -234,10 +235,10 @@
       oncompositionend={handleCompositionEnd}
       onscroll={syncScroll}
       rows="1"
-      aria-label={`cue ${cue.orderIndex + 1} text`}
+      aria-label={m.cue_text_label({ number: cue.orderIndex + 1 })}
     ></textarea>
   </div>
-  {#if cue.needsReview}<button type="button" class="badge review-btn" onclick={() => onClearReview(cue.id)}>Mark reviewed</button>{/if}
+  {#if cue.needsReview}<button type="button" class="badge review-btn" onclick={() => onClearReview(cue.id)}>{m.cue_mark_reviewed()}</button>{/if}
   {#if remoteUsers.length > 0}
     <span class="remote-labels">
       {#each remoteUsers as u (u.id)}
@@ -246,7 +247,7 @@
     </span>
   {/if}
   <CueHistory {episodeId} cueId={cue.id} />
-  <button type="button" class="cue-delete" aria-label={`Delete cue ${cue.orderIndex + 1}`} onclick={() => onDeleteCue(cue.id)}>🗑</button>
+  <button type="button" class="cue-delete" aria-label={m.cue_delete_label({ number: cue.orderIndex + 1 })} onclick={() => onDeleteCue(cue.id)}>🗑</button>
 </li>
 
 <style>

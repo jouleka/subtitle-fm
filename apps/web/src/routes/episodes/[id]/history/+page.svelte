@@ -22,6 +22,7 @@
     type CueListDiffRow,
   } from '@subtitle-fm/shared';
   import type { PageData } from './$types';
+  import { m } from '$lib/paraglide/messages';
 
   let { data }: { data: PageData } = $props();
 
@@ -72,10 +73,10 @@
         ours: oursId,
         theirs: theirsId,
       });
-      if (comparison.diff.rows.length === 0) message = 'These snapshots contain no cues.';
+      if (comparison.diff.rows.length === 0) message = m.history_no_cues();
     } catch (cause) {
       comparison = null;
-      message = `Comparison failed: ${(cause as Error).message}`;
+      message = m.history_comparison_failed({ error: (cause as Error).message });
     } finally {
       loading = false;
     }
@@ -92,9 +93,9 @@
       });
       branches = [created, ...branches];
       branchName = '';
-      message = `Branch ${created.name} created from its milestone.`;
+      message = m.history_branch_created({ branch: created.name });
     } catch (cause) {
-      message = `Branch creation failed: ${(cause as Error).message}`;
+      message = m.history_branch_creation_failed({ error: (cause as Error).message });
     } finally {
       branchBusy = null;
     }
@@ -105,10 +106,10 @@
     message = null;
     try {
       comparison = await fetchBranchDiff(PUBLIC_API_URL, data.episode.id, branch.id);
-      message = `Comparing live with branch ${branch.name}.`;
+      message = m.history_comparing_branch({ branch: branch.name });
     } catch (cause) {
       comparison = null;
-      message = `Branch comparison failed: ${(cause as Error).message}`;
+      message = m.history_branch_comparison_failed({ error: (cause as Error).message });
     } finally {
       branchBusy = null;
     }
@@ -121,7 +122,7 @@
     comparison = null;
     resolutionBranch = null;
     resolutionConflicts = [];
-    message = `Branch ${branch.name} merged into live.`;
+    message = m.history_branch_merged({ branch: branch.name });
   }
 
   async function prepareMerge(branch: SubtitleBranch) {
@@ -133,13 +134,13 @@
       if (conflicts.length > 0) {
         resolutionBranch = branch;
         resolutionConflicts = conflicts;
-        message = `Resolve ${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'} before merging ${branch.name}.`;
+        message = m.history_resolve_conflicts({ count: conflicts.length, branch: branch.name });
       } else {
         await mergeSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id, []);
         markBranchMerged(branch);
       }
     } catch (cause) {
-      message = `Merge preparation failed: ${(cause as Error).message}`;
+      message = m.history_merge_preparation_failed({ error: (cause as Error).message });
     } finally {
       branchBusy = null;
     }
@@ -154,7 +155,7 @@
       await mergeSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id, resolutions);
       markBranchMerged(branch);
     } catch (cause) {
-      message = `Merge stopped: ${(cause as Error).message}. Live may have changed; close and reopen the resolver to refresh conflicts.`;
+      message = m.history_merge_stopped({ error: (cause as Error).message });
     } finally {
       branchBusy = null;
     }
@@ -162,7 +163,7 @@
 
   async function rejectBranch(branch: SubtitleBranch) {
     if (!data.access.canMerge) return;
-    if (!confirm(`Reject branch ${branch.name}? Its author will lose reputation for rejected cues.`)) {
+    if (!confirm(m.history_reject_confirm({ branch: branch.name }))) {
       return;
     }
     branchBusy = branch.id;
@@ -171,9 +172,12 @@
       const result = await rejectSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id);
       branches = branches.map((item) => (item.id === branch.id ? result.branch : item));
       comparison = null;
-      message = `Branch ${branch.name} rejected; author reputation decreased by ${result.reputationPenalty}.`;
+      message = m.history_branch_rejected({
+        branch: branch.name,
+        penalty: result.reputationPenalty,
+      });
     } catch (cause) {
-      message = `Branch rejection failed: ${(cause as Error).message}`;
+      message = m.history_branch_rejection_failed({ error: (cause as Error).message });
     } finally {
       branchBusy = null;
     }
@@ -200,40 +204,40 @@
 </script>
 
 <svelte:head>
-  <title>Snapshot history — {data.episode.title ?? `Episode ${data.episode.number}`}</title>
+  <title>{m.history_page_title()} — {data.episode.title ?? m.editor_episode_fallback({ number: data.episode.number })}</title>
 </svelte:head>
 
 <main class="history-page">
   <header>
     <div>
-      <a class="back" href={`/episodes/${data.episode.id}/edit`}>← Back to editor</a>
-      <h1>Snapshot history</h1>
-      <p>Compare cue-list changes across a base and two milestones.</p>
+      <a class="back" href={`/episodes/${data.episode.id}/edit`}>{m.common_back_to_editor()}</a>
+      <h1>{m.history_page_title()}</h1>
+      <p>{m.history_intro()}</p>
     </div>
-    <span class="episode-label">{data.episode.title ?? `Episode ${data.episode.number}`}</span>
+    <span class="episode-label">{data.episode.title ?? m.editor_episode_fallback({ number: data.episode.number })}</span>
   </header>
 
   <section class="branch-panel" aria-labelledby="branches-heading">
     <div class="branch-heading">
       <div>
-        <h2 id="branches-heading">Translation branches</h2>
-        <p>Fork a milestone, edit it collaboratively, then compare and merge it back into live.</p>
+        <h2 id="branches-heading">{m.history_branches()}</h2>
+        <p>{m.history_branches_intro()}</p>
         <p class="access-summary">
-          Role <strong>{data.access.showRole?.toUpperCase() ?? data.access.globalRole}</strong>
-          · <strong>{data.access.reputation}</strong> reputation
+          {m.history_role()} <strong>{data.access.showRole?.toUpperCase() ?? data.access.globalRole}</strong>
+          · <strong>{data.access.reputation}</strong> {m.history_reputation()}
           {#if !data.access.canMerge}
-            · merge needs {data.access.thresholds.merge} reputation and TL/TLC/QC
+            · {m.history_merge_requirement({ threshold: data.access.thresholds.merge })}
           {/if}
         </p>
       </div>
       {#if data.snapshots.length > 0}
         <div class="branch-create">
           <label>
-            <span>Name</span>
+            <span>{m.history_name()}</span>
             <input bind:value={branchName} placeholder="alternate-ed" pattern="[a-z0-9][a-z0-9._-]*" />
           </label>
           <label>
-            <span>Fork from</span>
+            <span>{m.history_fork_from()}</span>
             <select bind:value={branchBaseId}>
               {#each data.snapshots as snapshot (snapshot.id)}
                 <option value={snapshot.id}>{snapshot.label}</option>
@@ -241,15 +245,15 @@
             </select>
           </label>
           <button disabled={!branchName.trim() || branchBusy !== null} onclick={createBranch}>
-            {branchBusy === 'create' ? 'Creating…' : 'Create branch'}
+            {branchBusy === 'create' ? m.history_creating() : m.history_create_branch()}
           </button>
         </div>
       {/if}
     </div>
     {#if data.snapshots.length === 0}
-      <p class="branch-empty">Create a named milestone before forking a branch.</p>
+      <p class="branch-empty">{m.history_milestone_needed()}</p>
     {:else if branches.length === 0}
-      <p class="branch-empty">No branches yet.</p>
+      <p class="branch-empty">{m.history_no_branches()}</p>
     {:else}
       <div class="branch-list">
         {#each branches as branch (branch.id)}
@@ -257,24 +261,24 @@
             <div>
               <strong>{branch.name}</strong>
               <span class="branch-status {branch.status}">{branch.status}</span>
-              <small>base: {data.snapshots.find((item) => item.id === branch.baseSnapshotId)?.label ?? 'milestone'}</small>
+              <small>{m.history_base_prefix({ label: data.snapshots.find((item) => item.id === branch.baseSnapshotId)?.label ?? m.history_milestone() })}</small>
             </div>
             <div class="branch-actions">
               {#if branch.status === 'open'}
-                <a class="button-link" href={`/episodes/${data.episode.id}/edit?branch=${branch.id}`}>Edit</a>
-                <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>Compare</button>
+                <a class="button-link" href={`/episodes/${data.episode.id}/edit?branch=${branch.id}`}>{m.common_edit()}</a>
+                <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>{m.common_compare()}</button>
                 {#if data.access.canMerge}
                   <button class="merge-button" disabled={branchBusy !== null} onclick={() => prepareMerge(branch)}>
-                    {branchBusy === branch.id ? 'Working…' : 'Merge'}
+                    {branchBusy === branch.id ? m.common_working() : m.common_merge()}
                   </button>
                   <button class="reject-button" disabled={branchBusy !== null} onclick={() => rejectBranch(branch)}>
-                    Reject
+                    {m.common_reject()}
                   </button>
                 {:else}
-                  <span class="permission-note">Suggestion awaiting reviewer</span>
+                  <span class="permission-note">{m.history_awaiting_reviewer()}</span>
                 {/if}
               {:else}
-                <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>View diff</button>
+                <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>{m.history_view_diff()}</button>
               {/if}
             </div>
           </article>
@@ -285,14 +289,14 @@
 
   {#if data.snapshots.length < 3}
     <section class="empty-state">
-      <h2>Three milestones required</h2>
-      <p>Create at least three named snapshots in the editor workflow before comparing branches.</p>
-      <p><strong>{data.snapshots.length}</strong> available now.</p>
+      <h2>{m.history_three_required()}</h2>
+      <p>{m.history_three_required_body()}</p>
+      <p>{m.history_available({ count: data.snapshots.length })}</p>
     </section>
   {:else}
-    <section class="controls" aria-label="Snapshot selection">
+    <section class="controls" aria-label={m.history_snapshot_selection()}>
       <label>
-        <span>Base</span>
+        <span>{m.history_base()}</span>
         <select bind:value={baseId}>
           {#each data.snapshots as snapshot (snapshot.id)}
             <option value={snapshot.id}>{snapshot.label}</option>
@@ -300,7 +304,7 @@
         </select>
       </label>
       <label>
-        <span>Ours</span>
+        <span>{m.history_ours()}</span>
         <select bind:value={oursId}>
           {#each data.snapshots as snapshot (snapshot.id)}
             <option value={snapshot.id}>{snapshot.label}</option>
@@ -308,7 +312,7 @@
         </select>
       </label>
       <label>
-        <span>Theirs</span>
+        <span>{m.history_theirs()}</span>
         <select bind:value={theirsId}>
           {#each data.snapshots as snapshot (snapshot.id)}
             <option value={snapshot.id}>{snapshot.label}</option>
@@ -316,26 +320,26 @@
         </select>
       </label>
       <button disabled={!canCompare || loading} onclick={compare}>
-        {loading ? 'Comparing…' : 'Compare snapshots'}
+        {loading ? m.history_comparing() : m.history_compare_snapshots()}
       </button>
     </section>
 
     {#if !canCompare}
-      <p class="selection-warning">Choose three different snapshots.</p>
+      <p class="selection-warning">{m.history_choose_three()}</p>
     {/if}
   {/if}
 
   {#if message}<p class="message">{message}</p>{/if}
 
   {#if comparison}
-      <section class="summary" aria-label="Diff summary">
-        <span class="added"><strong>{comparison.diff.summary.added}</strong> added</span>
-        <span class="removed"><strong>{comparison.diff.summary.removed}</strong> removed</span>
-        <span class="modified"><strong>{comparison.diff.summary.modified}</strong> modified</span>
-        <span><strong>{comparison.diff.summary.conflicts}</strong> cue conflicts</span>
-        <span class="text-conflicts"><strong>{textConflictCount}</strong> text conflicts</span>
+      <section class="summary" aria-label={m.history_diff_summary()}>
+        <span class="added"><strong>{comparison.diff.summary.added}</strong> {m.history_added()}</span>
+        <span class="removed"><strong>{comparison.diff.summary.removed}</strong> {m.history_removed()}</span>
+        <span class="modified"><strong>{comparison.diff.summary.modified}</strong> {m.history_modified()}</span>
+        <span><strong>{comparison.diff.summary.conflicts}</strong> {m.history_cue_conflicts()}</span>
+        <span class="text-conflicts"><strong>{textConflictCount}</strong> {m.history_text_conflicts()}</span>
         <label class="unchanged-toggle">
-          <input type="checkbox" bind:checked={showUnchanged} /> Show unchanged
+          <input type="checkbox" bind:checked={showUnchanged} /> {m.history_show_unchanged()}
         </label>
       </section>
 
@@ -343,10 +347,10 @@
         <table>
           <thead>
             <tr>
-              <th>Status</th>
-              <th>Base · {comparison.snapshots.base.label}</th>
-              <th>Ours · {comparison.snapshots.ours.label}</th>
-              <th>Theirs · {comparison.snapshots.theirs.label}</th>
+              <th>{m.history_status()}</th>
+              <th>{m.history_base()} · {comparison.snapshots.base.label}</th>
+              <th>{m.history_ours()} · {comparison.snapshots.ours.label}</th>
+              <th>{m.history_theirs()} · {comparison.snapshots.theirs.label}</th>
             </tr>
           </thead>
           <tbody>
@@ -355,9 +359,9 @@
               <tr class:conflict={row.conflict} class:text-conflict={inlineDiff.conflicts.length > 0}>
                 <th scope="row">
                   <span class="badge {row.kind}">{row.kind}</span>
-                  {#if row.conflict}<span class="conflict-label">cue conflict</span>{/if}
+                  {#if row.conflict}<span class="conflict-label">{m.history_cue_conflict()}</span>{/if}
                   {#if inlineDiff.conflicts.length > 0}
-                    <span class="text-conflict-label">text conflict</span>
+                    <span class="text-conflict-label">{m.history_text_conflict()}</span>
                   {/if}
                   <small>@ {formatMs(row.anchorMs)}</small>
                 </th>
@@ -376,7 +380,7 @@
               </tr>
             {/each}
             {#if visibleRows.length === 0}
-              <tr><td class="no-changes" colspan="4">No changed cues in this comparison.</td></tr>
+              <tr><td class="no-changes" colspan="4">{m.history_no_changes()}</td></tr>
             {/if}
           </tbody>
         </table>

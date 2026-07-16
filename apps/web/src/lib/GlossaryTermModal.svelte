@@ -2,6 +2,7 @@
   import { GlossaryTermKind } from "@subtitle-fm/shared";
   import type { CreateGlossaryTerm, UpdateGlossaryTerm } from "@subtitle-fm/shared";
   import { buildTermPayload, type TermFormFields } from "$lib/glossary-form";
+  import { m } from "$lib/paraglide/messages";
 
   let {
     mode,
@@ -37,9 +38,9 @@
   });
 
   function friendlyError(code: string): string {
-    if (code === "duplicate_source") return "A term with this source already exists.";
-    if (code === "unauthorized") return "Your session expired — reload to continue.";
-    return "Something went wrong. Please try again.";
+    if (code === "duplicate_source") return m.glossary_duplicate();
+    if (code === "unauthorized") return m.glossary_session_expired();
+    return m.glossary_generic_error();
   }
 
   function submit(e: Event) {
@@ -69,11 +70,11 @@
     class="modal"
     role="dialog"
     aria-modal="true"
-    aria-label={mode === "create" ? "Add glossary term" : "Edit glossary term"}
+    aria-label={mode === "create" ? m.glossary_add_term() : m.glossary_edit_term()}
   >
     <form onsubmit={submit}>
       <label>
-        <span>Source</span>
+        <span>{m.glossary_source()}</span>
         {#if mode === "create"}
           <input bind:this={firstFieldEl} bind:value={sourceText} type="text" />
         {:else}
@@ -81,7 +82,7 @@
         {/if}
       </label>
       <label>
-        <span>Target</span>
+        <span>{m.glossary_target()}</span>
         {#if mode === "create"}
           <input bind:value={targetText} type="text" />
         {:else}
@@ -89,7 +90,7 @@
         {/if}
       </label>
       <label>
-        <span>Kind</span>
+        <span>{m.glossary_kind()}</span>
         <select bind:value={kind}>
           {#each GlossaryTermKind.options as k}
             <option value={k}>{k}</option>
@@ -97,13 +98,13 @@
         </select>
       </label>
       <label>
-        <span>Notes</span>
+        <span>{m.glossary_notes()}</span>
         <textarea bind:value={notes} rows="2"></textarea>
       </label>
       {#if error}<p class="error" role="alert">{friendlyError(error)}</p>{/if}
       <div class="actions">
-        <button type="button" onclick={onClose} disabled={submitting}>Cancel</button>
-        <button type="submit" disabled={!valid || submitting}>{submitting ? "Saving…" : "Save"}</button>
+        <button type="button" onclick={onClose} disabled={submitting}>{m.common_cancel()}</button>
+        <button type="submit" disabled={!valid || submitting}>{submitting ? m.common_saving() : m.common_save()}</button>
       </div>
     </form>
   </div>

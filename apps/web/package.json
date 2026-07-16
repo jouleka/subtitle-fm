@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "test": "bun test",
-    "typecheck": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
+    "typecheck": "paraglide-js compile --project ./project.inlang --outdir ./src/lib/paraglide --strategy cookie baseLocale --emit-ts-declarations --silent && svelte-kit sync && svelte-check --tsconfig ./tsconfig.json"
   },
   "dependencies": {
     "@hocuspocus/provider": "^3.0.0",
@@ -23,6 +23,7 @@
     "yjs": "^13.6.20"
   },
   "devDependencies": {
+    "@inlang/paraglide-js": "2.22.0",
     "@sveltejs/adapter-node": "^5.2.10",
     "@sveltejs/kit": "^2.15.0",
     "@sveltejs/vite-plugin-svelte": "^5.0.3",

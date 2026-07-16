@@ -8,6 +8,7 @@
   } from "@subtitle-fm/shared";
   import { createTerm, updateTerm, deleteTerm, GlossaryApiError } from "$lib/glossary-api";
   import GlossaryTermModal from "$lib/GlossaryTermModal.svelte";
+  import { m } from "$lib/paraglide/messages";
 
   let {
     terms,
@@ -85,7 +86,7 @@
     }
   }
   async function remove(t: GlossaryTerm) {
-    if (!confirm(`Delete glossary term "${t.sourceText}"?`)) return;
+    if (!confirm(m.glossary_delete_confirm({ term: t.sourceText }))) return;
     actionError = null;
     try {
       await deleteTerm(PUBLIC_API_URL, showId, t.id);
@@ -97,8 +98,8 @@
       if (status !== 404) {
         actionError =
           status === 401
-            ? "Your session expired — reload to continue."
-            : "Could not delete that term. Please try again.";
+            ? m.glossary_session_expired()
+            : m.glossary_delete_failed();
       }
     }
     await onChanged();
@@ -107,12 +108,12 @@
 
 <div class="glossary">
   <div class="glossary-head">
-    <h2 class="glossary-title">Glossary</h2>
-    <button class="add-btn" type="button" onmousedown={capturePrefill} onclick={openCreate}>+ Add</button>
+    <h2 class="glossary-title">{m.editor_glossary()}</h2>
+    <button class="add-btn" type="button" onmousedown={capturePrefill} onclick={openCreate}>{m.glossary_add()}</button>
   </div>
   {#if actionError}<p class="action-error" role="alert">{actionError}</p>{/if}
   {#if terms.length === 0}
-    <p class="empty">No glossary terms for this show yet.</p>
+    <p class="empty">{m.glossary_empty()}</p>
   {:else}
     <ul class="terms">
       {#each terms as term (term.id)}
@@ -130,9 +131,9 @@
             <span class="kind">{term.kind}</span>
           </button>
           <span class="row-actions">
-            {#if matchedIds.has(term.id)}<span class="match" title="Appears in the focused cue">in cue</span>{/if}
-            <button class="icon" type="button" aria-label={`Edit ${term.sourceText}`} onclick={() => openEdit(term)}>✎</button>
-            <button class="icon" type="button" aria-label={`Delete ${term.sourceText}`} onclick={() => remove(term)}>🗑</button>
+            {#if matchedIds.has(term.id)}<span class="match" title={m.glossary_match_title()}>{m.glossary_in_cue()}</span>{/if}
+            <button class="icon" type="button" aria-label={m.glossary_edit_label({ term: term.sourceText })} onclick={() => openEdit(term)}>✎</button>
+            <button class="icon" type="button" aria-label={m.glossary_delete_label({ term: term.sourceText })} onclick={() => remove(term)}>🗑</button>
           </span>
         </li>
       {/each}

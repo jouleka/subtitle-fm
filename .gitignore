@@ -12,6 +12,7 @@ pnpm-lock.yaml
 dist/
 build/
 .svelte-kit/
+apps/web/src/lib/paraglide/
 .vercel/
 .next/
 out/

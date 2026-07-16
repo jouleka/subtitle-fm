@@ -3,6 +3,7 @@
   import { untrack } from 'svelte';
   import { auditValue, fetchEpisodeAudit, type CueAuditEvent } from '$lib/audit-api';
   import type { PageData } from './$types';
+  import { m } from '$lib/paraglide/messages';
 
   let { data }: { data: PageData } = $props();
   const initial = untrack(() => ({
@@ -41,23 +42,23 @@
 </script>
 
 <svelte:head>
-  <title>Audit history — {data.episode.title ?? `Episode ${data.episode.number}`}</title>
+  <title>{m.audit_page_title()} — {data.episode.title ?? m.editor_episode_fallback({ number: data.episode.number })}</title>
 </svelte:head>
 
 <main>
   <header>
     <div>
-      <a href={`/episodes/${data.episode.id}/edit`}>← Back to editor</a>
-      <h1>Episode audit history</h1>
-      <p>{data.episode.title ?? `Episode ${data.episode.number}`} · attributed cue changes</p>
+      <a href={`/episodes/${data.episode.id}/edit`}>{m.common_back_to_editor()}</a>
+      <h1>{m.audit_heading()}</h1>
+      <p>{data.episode.title ?? m.editor_episode_fallback({ number: data.episode.number })} · {m.audit_attributed_changes()}</p>
     </div>
-    <span>{events.length} loaded</span>
+    <span>{m.audit_loaded({ count: events.length })}</span>
   </header>
 
   {#if events.length === 0}
     <section class="empty">
-      <h2>No changes recorded yet</h2>
-      <p>New collaborative cue edits will appear here.</p>
+      <h2>{m.audit_empty_heading()}</h2>
+      <p>{m.audit_empty_body()}</p>
     </section>
   {:else}
     <ol class="timeline">
@@ -66,11 +67,11 @@
           <span class="marker"></span>
           <article>
             <div class="event-heading">
-              <strong>{event.userHandle ?? 'Deleted user'}</strong>
-              <span>changed <b>{event.fieldChanged}</b></span>
+              <strong>{event.userHandle ?? m.cue_history_deleted_user()}</strong>
+              <span>{m.audit_changed()} <b>{event.fieldChanged}</b></span>
               <time datetime={event.ts}>{new Date(event.ts).toLocaleString()}</time>
             </div>
-            <code>cue {event.cueId.slice(0, 8)}</code>
+            <code>{m.audit_cue({ id: event.cueId.slice(0, 8) })}</code>
             <div class="change">
               <span class="old">{auditValue(event.oldValue)}</span>
               <span aria-hidden="true">→</span>
@@ -82,10 +83,10 @@
     </ol>
     {#if hasMore}
       <button class="load-more" disabled={loading} onclick={loadMore}>
-        {loading ? 'Loading…' : 'Load older changes'}
+        {loading ? m.cue_history_loading() : m.audit_load_older()}
       </button>
     {/if}
-    {#if loadError}<p class="error">Could not load older changes: {loadError}</p>{/if}
+    {#if loadError}<p class="error">{m.audit_load_error({ error: loadError })}</p>{/if}
   {/if}
 </main>
 

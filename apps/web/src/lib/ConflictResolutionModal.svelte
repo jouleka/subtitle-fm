@@ -5,6 +5,7 @@
     CueConflictResolution,
     CueListDiffRow,
   } from '@subtitle-fm/shared';
+  import { m } from '$lib/paraglide/messages';
 
   type Draft = { choice: CueConflictChoice | null; manualText: string };
 
@@ -70,50 +71,50 @@
   <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="resolution-title">
     <header>
       <div>
-        <p class="eyebrow">Conflict {index + 1} of {conflicts.length}</p>
-        <h2 id="resolution-title">Resolve {branchName}</h2>
-        <p class="anchor">Cue at {formatMs(current.anchorMs)}</p>
+        <p class="eyebrow">{m.conflict_number({ current: index + 1, total: conflicts.length })}</p>
+        <h2 id="resolution-title">{m.conflict_resolve({ branch: branchName })}</h2>
+        <p class="anchor">{m.conflict_cue_at({ time: formatMs(current.anchorMs) })}</p>
       </div>
-      <button class="close" aria-label="Close conflict resolution" disabled={busy} onclick={onCancel}>×</button>
+      <button class="close" aria-label={m.conflict_close()} disabled={busy} onclick={onCancel}>×</button>
     </header>
 
     <div class="versions">
       <article>
-        <h3>Base</h3>
-        <pre>{current.base?.text ?? 'Cue absent'}</pre>
+        <h3>{m.conflict_base()}</h3>
+        <pre>{current.base?.text ?? m.conflict_cue_absent()}</pre>
       </article>
       <article>
-        <h3>Live</h3>
-        <pre>{current.ours?.text ?? 'Cue removed'}</pre>
+        <h3>{m.conflict_live()}</h3>
+        <pre>{current.ours?.text ?? m.conflict_cue_removed()}</pre>
       </article>
       <article>
-        <h3>Branch</h3>
-        <pre>{current.theirs?.text ?? 'Cue removed'}</pre>
+        <h3>{m.conflict_branch()}</h3>
+        <pre>{current.theirs?.text ?? m.conflict_cue_removed()}</pre>
       </article>
     </div>
 
     <fieldset>
-      <legend>Choose the merged result</legend>
+      <legend>{m.conflict_choose()}</legend>
       <div class="choices">
         <button
           class:selected={currentDraft.choice === 'ours'}
           aria-pressed={currentDraft.choice === 'ours'}
           onclick={() => choose('ours')}
-        >Use live</button>
+        >{m.conflict_use_live()}</button>
         <button
           class:selected={currentDraft.choice === 'theirs'}
           aria-pressed={currentDraft.choice === 'theirs'}
           onclick={() => choose('theirs')}
-        >Use branch</button>
+        >{m.conflict_use_branch()}</button>
         <button
           class:selected={currentDraft.choice === 'manual'}
           aria-pressed={currentDraft.choice === 'manual'}
           onclick={() => choose('manual')}
-        >Write manual</button>
+        >{m.conflict_write_manual()}</button>
       </div>
       {#if currentDraft.choice === 'manual'}
         <label class="manual">
-          <span>Manual subtitle text</span>
+          <span>{m.conflict_manual_text()}</span>
           <textarea
             rows="4"
             value={currentDraft.manualText}
@@ -124,14 +125,14 @@
     </fieldset>
 
     <footer>
-      <span>{resolvedCount} of {conflicts.length} resolved</span>
+      <span>{m.conflict_resolved_count({ count: resolvedCount, total: conflicts.length })}</span>
       <div class="navigation">
-        <button disabled={index === 0 || busy} onclick={() => (index -= 1)}>Previous</button>
+        <button disabled={index === 0 || busy} onclick={() => (index -= 1)}>{m.common_previous()}</button>
         {#if index < conflicts.length - 1}
-          <button disabled={!currentDraft.choice || busy} onclick={() => (index += 1)}>Next conflict</button>
+          <button disabled={!currentDraft.choice || busy} onclick={() => (index += 1)}>{m.conflict_next()}</button>
         {:else}
           <button class="merge" disabled={!canSubmit} onclick={submit}>
-            {busy ? 'Merging…' : 'Merge resolved branch'}
+            {busy ? m.conflict_merging() : m.conflict_merge_branch()}
           </button>
         {/if}
       </div>

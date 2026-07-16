@@ -35,6 +35,8 @@
   } from "$lib/presence";
   import type { Cue } from "$lib/types";
   import type { GlossaryTerm } from "@subtitle-fm/shared";
+  import { m } from "$lib/paraglide/messages";
+  import LocaleSwitcher from "$lib/LocaleSwitcher.svelte";
 
   let { data }: { data: PageData } = $props();
 
@@ -137,7 +139,7 @@
 
   function handleDeleteCue(id: string) {
     if (!provider) return;
-    if (!confirm("Delete this cue?")) return;
+    if (!confirm(m.editor_delete_cue_confirm())) return;
     const i = cues.findIndex((c) => c.id === id);
     if (i < 0) return;
     const neighbour = cues[i - 1] ?? cues[i + 1] ?? null; // prefer previous, else next (ids from the pre-delete list)
@@ -180,7 +182,7 @@
 
   async function publish() {
     if (!data.access.canPublish) {
-      publishMsg = `Publish requires ${data.access.thresholds.publish} reputation and a TL or QC role.`;
+      publishMsg = m.editor_publish_access_message({ threshold: data.access.thresholds.publish });
       return;
     }
     publishing = true;
@@ -195,14 +197,23 @@
       const status = (body as { status?: string }).status;
       if (res.ok && status === "publishing") {
         publishQueued = true;
-        publishMsg = `Publishing queued → ${keys ? Object.keys(keys).join(", ") : "ass, srt, vtt"}`;
+        publishMsg = m.editor_publish_queued({
+          formats: keys ? Object.keys(keys).join(", ") : "ass, srt, vtt",
+        });
       } else {
         publishMsg = res.ok
-          ? `Published → ${keys ? Object.keys(keys).join(", ") : ((body as { key?: string }).key ?? "ok")}`
-          : `Publish failed (${res.status}): ${(body as { error?: string }).error ?? "error"}`;
+          ? m.editor_published_message({
+              formats: keys
+                ? Object.keys(keys).join(", ")
+                : ((body as { key?: string }).key ?? "ok"),
+            })
+          : m.editor_publish_failed_status({
+              status: res.status,
+              error: (body as { error?: string }).error ?? "error",
+            });
       }
     } catch (e) {
-      publishMsg = `Publish failed: ${(e as Error).message}`;
+      publishMsg = m.editor_publish_failed({ error: (e as Error).message });
     } finally {
       publishing = false;
     }
@@ -427,39 +438,39 @@
 </script>
 
 <svelte:head>
-  <title>{data.episode.title ?? `Episode ${data.episode.number}`} — Subtitle.fm</title>
+  <title>{data.episode.title ?? m.editor_episode_fallback({ number: data.episode.number })} — Subtitle.fm</title>
 </svelte:head>
 
 {#if !ready}
   <section class="status-placeholder">
     <h1>
       {data.episode.status === "publishing"
-        ? "Publishing subtitles"
+        ? m.editor_publishing_subtitles()
         : data.episode.status === "published"
-          ? "Episode published"
-          : "Episode still processing"}
+          ? m.editor_episode_published()
+          : m.editor_episode_processing()}
     </h1>
-    <p>Current stage: <strong>{data.episode.status}</strong></p>
+    <p>{m.editor_current_stage()} <strong>{data.episode.status}</strong></p>
     {#if data.episode.status === "publishing"}
-      <p>Refresh once the publish worker finishes.</p>
+      <p>{m.editor_refresh_publish()}</p>
     {:else if data.episode.status !== "published"}
-      <p>Refresh once the pipeline reaches <code>ready_for_edit</code>.</p>
+      <p>{m.editor_refresh_ready()}</p>
     {/if}
   </section>
 {:else}
   <main class="editor">
-    <nav class="tabs" aria-label="Editor panes">
-      <button class:active={activeTab === "video"} onclick={() => (activeTab = "video")}>Video</button>
-      <button class:active={activeTab === "waveform"} onclick={() => (activeTab = "waveform")}>Waveform</button>
-      <button class:active={activeTab === "cues"} onclick={() => (activeTab = "cues")}>Cues</button>
-      <button class:active={activeTab === "glossary"} onclick={() => (activeTab = "glossary")}>Glossary</button>
-      <span class="conn">collab: {connectionStatus}</span>
+    <nav class="tabs" aria-label={m.editor_panes()}>
+      <button class:active={activeTab === "video"} onclick={() => (activeTab = "video")}>{m.editor_video()}</button>
+      <button class:active={activeTab === "waveform"} onclick={() => (activeTab = "waveform")}>{m.editor_waveform()}</button>
+      <button class:active={activeTab === "cues"} onclick={() => (activeTab = "cues")}>{m.editor_cues()}</button>
+      <button class:active={activeTab === "glossary"} onclick={() => (activeTab = "glossary")}>{m.editor_glossary()}</button>
+      <span class="conn">{m.editor_collab({ status: connectionStatus })}</span>
       <span class="access-badge">
-        {data.access.showRole?.toUpperCase() ?? data.access.globalRole} · {data.access.reputation} rep
+        {data.access.showRole?.toUpperCase() ?? data.access.globalRole} · {m.editor_reputation({ value: data.access.reputation })}
       </span>
-      <a class="audit-link" href={`/episodes/${data.episode.id}/audit`}>Audit history</a>
+      <a class="audit-link" href={`/episodes/${data.episode.id}/audit`}>{m.editor_audit_history()}</a>
       {#if data.branch}
-        <span class="branch-badge">branch: {data.branch.name}</span>
+        <span class="branch-badge">{m.editor_branch({ name: data.branch.name })}</span>
       {:else}
         <button
           class="publish-btn"
@@ -469,12 +480,12 @@
             !data.access.canPublish ||
             data.episode.status === "published"}
           title={unreviewedCount > 0
-            ? `${unreviewedCount} cue(s) need review`
+            ? m.editor_cues_need_review({ count: unreviewedCount })
             : !data.access.canPublish
-              ? `Requires ${data.access.thresholds.publish} reputation and TL/QC role`
-              : "Publish finalized ASS, SRT, and VTT subtitles"}
+              ? m.editor_publish_access_title({ threshold: data.access.thresholds.publish })
+              : m.editor_publish_formats_title()}
           onclick={publish}
-        >{publishing ? "Queuing…" : publishQueued ? "Publishing…" : "Publish"}</button>
+        >{publishing ? m.editor_queuing() : publishQueued ? m.editor_publishing() : m.editor_publish()}</button>
         {#if publishMsg}<span class="publish-msg">{publishMsg}</span>{/if}
       {/if}
     </nav>
@@ -483,17 +494,18 @@
       {#if mediaUrl}
         <video bind:this={videoEl} controls src={mediaUrl}></video>
       {:else}
-        <p class="empty">No media URL on this episode.</p>
+        <p class="empty">{m.editor_no_media()}</p>
       {/if}
     </section>
 
     <section class="pane pane-cues" class:tab-active={activeTab === "cues"}>
       <div class="cue-toolbar">
         {#if data.branch}
-          <span class="branch-context">Editing branch: <strong>{data.branch.name}</strong></span>
+          <span class="branch-context">{m.editor_editing_branch()} <strong>{data.branch.name}</strong></span>
         {/if}
         <PresenceRoster users={roster} />
-        <a href={`/episodes/${data.episode.id}/history`}>Compare snapshots</a>
+        <a href={`/episodes/${data.episode.id}/history`}>{m.editor_compare_snapshots()}</a>
+        <LocaleSwitcher />
       </div>
       <ol
         class="cue-list"
@@ -527,10 +539,10 @@
           />
         {/each}
         {#if cues.length === 0}
-          <li class="empty">No cues yet.</li>
+          <li class="empty">{m.editor_no_cues()}</li>
         {/if}
       </ol>
-        <button type="button" class="add-cue-btn" onclick={handleAddCue}>+ Add cue</button>
+        <button type="button" class="add-cue-btn" onclick={handleAddCue}>{m.editor_add_cue()}</button>
     </section>
 
     <section class="pane pane-waveform" class:tab-active={activeTab === "waveform"}>
@@ -538,7 +550,7 @@
         <div class="overview" bind:this={overviewEl}></div>
         <div class="zoomview" bind:this={zoomviewEl}></div>
       {:else}
-        <p class="placeholder">Waveform not yet generated for this episode.</p>
+        <p class="placeholder">{m.editor_waveform_missing()}</p>
       {/if}
     </section>
     <section class="pane pane-glossary" class:tab-active={activeTab === "glossary"}>

@@ -1,6 +1,7 @@
 <script lang="ts">
   import { PUBLIC_API_URL } from '$env/static/public';
   import { auditValue, fetchCueAudit, type CueAuditEvent } from '$lib/audit-api';
+  import { m } from '$lib/paraglide/messages';
 
   let { episodeId, cueId }: { episodeId: string; cueId: string } = $props();
   let open = $state(false);
@@ -26,21 +27,21 @@
 </script>
 
 <span class="history-wrap">
-  <button type="button" class="history-button" aria-expanded={open} onclick={toggle}>History</button>
+  <button type="button" class="history-button" aria-expanded={open} onclick={toggle}>{m.cue_history()}</button>
   {#if open}
     <span class="history-tooltip" role="tooltip">
-      <strong>Last 5 changes</strong>
+      <strong>{m.cue_history_last()}</strong>
       {#if loading}
-        <span>Loading…</span>
+        <span>{m.cue_history_loading()}</span>
       {:else if error}
         <span class="error">{error}</span>
       {:else if events.length === 0}
-        <span>No recorded changes.</span>
+        <span>{m.cue_history_empty()}</span>
       {:else}
         <ol>
           {#each events as event (event.id)}
             <li>
-              <span><b>{event.userHandle ?? 'Deleted user'}</b> · {event.fieldChanged}</span>
+              <span><b>{event.userHandle ?? m.cue_history_deleted_user()}</b> · {event.fieldChanged}</span>
               <small>{auditValue(event.oldValue)} → {auditValue(event.newValue)}</small>
               <time datetime={event.ts}>{new Date(event.ts).toLocaleString()}</time>
             </li>

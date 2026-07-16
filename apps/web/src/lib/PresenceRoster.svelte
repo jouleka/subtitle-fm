@@ -1,11 +1,12 @@
 <script lang="ts">
   import type { PresenceUser } from "$lib/presence";
+  import { m } from "$lib/paraglide/messages";
 
   let { users }: { users: PresenceUser[] } = $props();
 </script>
 
 {#if users.length > 0}
-  <span class="roster" aria-label="connected editors">
+  <span class="roster" aria-label={m.presence_connected_editors()}>
     {#each users as u (u.id)}
       <span class="chip" style:background={u.color} title={u.name}>{u.name}</span>
     {/each}
