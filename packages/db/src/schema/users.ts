@@ -1,5 +1,7 @@
 import { pgTable, text, uuid, integer, timestamp, boolean, pgEnum, uniqueIndex } from 'drizzle-orm/pg-core';
 
+export const apiTierEnum = pgEnum('api_tier', ['free', 'dev', 'pro']);
+
 export const userRoleEnum = pgEnum('user_role', [
   'anon',
   'editor',
@@ -19,6 +21,7 @@ export const users = pgTable(
     image: text('image'),
     reputation: integer('reputation').notNull().default(0),
     role: userRoleEnum('role').notNull().default('editor'),
+    apiTier: apiTierEnum('api_tier').notNull().default('free'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true })
       .notNull()

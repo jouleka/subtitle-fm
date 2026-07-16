@@ -25,6 +25,7 @@
     <a href="/#shows">Shows</a>
     <a href="/#submit">Submit</a>
     {#if user}
+      <a href="/dashboard">API dashboard</a>
       <span class="user-name">{user.name ?? 'Contributor'}</span>
       <button type="button" class="quiet-button" onclick={signOut}>Sign out</button>
     {:else}
