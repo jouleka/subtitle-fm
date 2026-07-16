@@ -69,7 +69,9 @@ app.route('/account', account);
 app.route('/v1', v1);
 app.route('/legal', legal);
 
-const port = Number(process.env.API_PORT ?? 3000);
+// Container hosts such as Render inject PORT. Keep API_PORT as the explicit
+// service override used by local development and existing deployments.
+const port = Number(process.env.API_PORT ?? process.env.PORT ?? 3000);
 log.info({ port }, 'api.listen');
 
 export default {

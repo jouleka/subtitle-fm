@@ -1,5 +1,10 @@
-const collabBase =
-  process.env.COLLAB_INTERNAL_URL ?? `http://localhost:${process.env.COLLAB_PORT ?? 1234}`;
+export function resolveCollabBase(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.COLLAB_INTERNAL_URL) return env.COLLAB_INTERNAL_URL;
+  if (env.COLLAB_INTERNAL_HOSTPORT) return `http://${env.COLLAB_INTERNAL_HOSTPORT}`;
+  return `http://localhost:${env.COLLAB_PORT ?? 1234}`;
+}
+
+const collabBase = resolveCollabBase();
 
 function authHeaders(): HeadersInit {
   const secret = process.env.COLLAB_SECRET;

@@ -5,7 +5,9 @@ import { databaseExtension } from "./persistence";
 import { handleInternalRequest } from "./internal-api";
 import { auditExtension } from "./audit";
 
-const port = Number(process.env.COLLAB_PORT ?? 1234);
+// Container hosts such as Render inject PORT. Keep COLLAB_PORT as the explicit
+// service override used by local development and existing deployments.
+const port = Number(process.env.COLLAB_PORT ?? process.env.PORT ?? 1234);
 
 const server = new Server({
   port,

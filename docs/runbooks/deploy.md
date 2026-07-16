@@ -37,7 +37,7 @@ publicly reachable). api ↔ collab ↔ worker-runner all share Postgres + Redis
 2. **Upstash** — create a Redis database. Copy the `rediss://…` URL → `REDIS_URL`. (BullMQ needs `maxRetriesPerRequest: null`, already set in code.)
 3. **R2** — already configured (buckets `subtitle-fm-media`, `subtitle-fm-peaks`). Reuse the existing `R2_*` secrets.
 4. **RunPod** — already configured (endpoint `RUNPOD_ENDPOINT_ID`). **Rebuild the endpoint from the latest commit** to pick up the slim CPU image (~2.4 GB vs 6.4 GB). Keep `SKIP_DEMUCS` unset.
-5. **Container host** (Fly / Railway / Render) — for api, collab, stremio, worker-runner. Fly needs the `Dockerfile`; Railway/Render can build it or build Bun from source.
+5. **Container host** (Fly / Railway / Render) — for api, collab, stremio, worker-runner. Fly needs the `Dockerfile`; Railway/Render can build it or build Bun from source. A Render Blueprint is checked in at [`render.yaml`](../../render.yaml); it reuses Neon, Upstash, R2, and RunPod rather than provisioning duplicate datastores.
 6. **Web host** — Vercel (switch web to `@sveltejs/adapter-vercel`) **or** the same container host (current `adapter-node`). See §6.
 7. **Discord** — in the Discord developer portal, add the production OAuth redirect URI: `https://<api-domain>/api/auth/callback/discord` (Better Auth's callback path). Keep `DISCORD_CLIENT_ID` / `DISCORD_CLIENT_SECRET`.
 8. Generate a strong **`WORKER_WEBHOOK_SECRET`** and a **`BETTER_AUTH_SECRET`** (`openssl rand -base64 32` each).
@@ -109,6 +109,23 @@ docker build --build-arg APP=worker-runner  -t sfm-worker-runner .
 ```
 
 Deploy order that avoids dangling references: **migrate → api (gives you `API_PUBLIC_URL`) → collab + stremio + worker-runner (need `API_PUBLIC_URL`) → web (needs `PUBLIC_API_URL`)**. Set `WEB_URL`/`BETTER_AUTH_URL` on api once the domains are known (a second api deploy is fine).
+
+### Render Blueprint
+
+The checked-in Blueprint configures four web services for Render's free plan
+and one paid Starter background worker in Frankfurt (current account limits
+and pricing still apply). Render does not offer the free plan for long-running
+workers. Review that cost before applying it, then open:
+
+`https://dashboard.render.com/blueprint/new?repo=https://github.com/jouleka/subtitle-fm`
+
+Fill every `sync: false` value from the existing secure runtime configuration
+(the Neon URL is entered for both API and collab). The generated
+`BETTER_AUTH_SECRET`, `COLLAB_SECRET`, and `WORKER_WEBHOOK_SECRET` are shared
+through service references. The temporary
+`*.onrender.com` origins make the first deployment testable before DNS exists;
+replace them with `subtitle.fm` custom domains in the Blueprint and Discord
+OAuth settings after DNS is configured.
 
 ---
 

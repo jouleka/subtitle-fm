@@ -1,0 +1,185 @@
+previews:
+  generation: off
+
+services:
+  - type: web
+    name: subtitle-fm-api
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: bun /app/apps/api/src/index.ts
+    preDeployCommand: cd /app && bun run --filter @subtitle-fm/db migrate
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: API_PUBLIC_URL
+        value: https://subtitle-fm-api.onrender.com
+      - key: WEB_URL
+        value: https://subtitle-fm-web.onrender.com
+      - key: BETTER_AUTH_URL
+        value: https://subtitle-fm-api.onrender.com
+      - key: COLLAB_INTERNAL_HOSTPORT
+        fromService:
+          type: web
+          name: subtitle-fm-collab
+          property: hostport
+      - key: R2_BUCKET_MEDIA
+        value: subtitle-fm-media
+      - key: R2_BUCKET_PEAKS
+        value: subtitle-fm-peaks
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: BETTER_AUTH_SECRET
+        generateValue: true
+      - key: DISCORD_CLIENT_ID
+        sync: false
+      - key: DISCORD_CLIENT_SECRET
+        sync: false
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: WORKER_WEBHOOK_SECRET
+        generateValue: true
+      - key: COLLAB_SECRET
+        fromService:
+          type: web
+          name: subtitle-fm-collab
+          envVarKey: COLLAB_SECRET
+      - key: LEMONSQUEEZY_API_KEY
+        sync: false
+      - key: LEMONSQUEEZY_STORE_ID
+        sync: false
+      - key: LEMONSQUEEZY_DEV_VARIANT_ID
+        sync: false
+      - key: LEMONSQUEEZY_PRO_VARIANT_ID
+        sync: false
+      - key: LEMONSQUEEZY_WEBHOOK_SECRET
+        sync: false
+
+  - type: web
+    name: subtitle-fm-collab
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: bun /app/apps/collab/src/index.ts
+    envVars:
+      - key: DATABASE_URL
+        sync: false
+      - key: COLLAB_SECRET
+        generateValue: true
+
+  - type: web
+    name: subtitle-fm-stremio
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: bun /app/apps/stremio/src/index.ts
+    envVars:
+      - key: API_PUBLIC_URL
+        value: https://subtitle-fm-api.onrender.com
+
+  - type: web
+    name: subtitle-fm-web
+    runtime: docker
+    plan: free
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./apps/web/Dockerfile
+    dockerContext: .
+    dockerCommand: bun /app/apps/web/build/index.js
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: ORIGIN
+        value: https://subtitle-fm-web.onrender.com
+      - key: PUBLIC_API_URL
+        value: https://subtitle-fm-api.onrender.com
+      - key: PUBLIC_COLLAB_URL
+        value: wss://subtitle-fm-collab.onrender.com
+
+  # Render does not offer a free plan for long-running background workers.
+  # Applying this Blueprint creates this one paid Starter service.
+  - type: worker
+    name: subtitle-fm-worker-runner
+    runtime: docker
+    plan: starter
+    region: frankfurt
+    branch: main
+    autoDeployTrigger: commit
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    dockerCommand: bun /app/apps/worker-runner/src/index.ts
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: LOG_LEVEL
+        value: info
+      - key: WORKER_MODE
+        value: runpod
+      - key: WORKER_CONCURRENCY
+        value: 2
+      - key: API_PUBLIC_URL
+        value: https://subtitle-fm-api.onrender.com
+      - key: R2_BUCKET_MEDIA
+        value: subtitle-fm-media
+      - key: R2_BUCKET_PEAKS
+        value: subtitle-fm-peaks
+      - key: DATABASE_URL
+        fromService:
+          type: web
+          name: subtitle-fm-api
+          envVarKey: DATABASE_URL
+      - key: REDIS_URL
+        fromService:
+          type: web
+          name: subtitle-fm-api
+          envVarKey: REDIS_URL
+      - key: R2_ACCOUNT_ID
+        fromService:
+          type: web
+          name: subtitle-fm-api
+          envVarKey: R2_ACCOUNT_ID
+      - key: R2_ACCESS_KEY_ID
+        fromService:
+          type: web
+          name: subtitle-fm-api
+          envVarKey: R2_ACCESS_KEY_ID
+      - key: R2_SECRET_ACCESS_KEY
+        fromService:
+          type: web
+          name: subtitle-fm-api
+          envVarKey: R2_SECRET_ACCESS_KEY
+      - key: WORKER_WEBHOOK_SECRET
+        fromService:
+          type: web
+          name: subtitle-fm-api
+          envVarKey: WORKER_WEBHOOK_SECRET
+      - key: RUNPOD_API_KEY
+        sync: false
+      - key: RUNPOD_ENDPOINT_ID
+        sync: false
