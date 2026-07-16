@@ -7,7 +7,8 @@
     type SnapshotCompareResponse,
     type SnapshotMeta,
   } from '$lib/snapshot-diff-api';
-  import type { CueListDiffRow } from '@subtitle-fm/shared';
+  import InlineTextDiff from '$lib/InlineTextDiff.svelte';
+  import { threeWayTextDiff, type CueListDiffRow } from '@subtitle-fm/shared';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -34,6 +35,9 @@
   );
   const visibleRows = $derived(
     comparison?.diff.rows.filter((row) => showUnchanged || row.kind !== 'unchanged') ?? [],
+  );
+  const textConflictCount = $derived(
+    comparison?.diff.rows.filter((row) => textDiffFor(row).conflicts.length > 0).length ?? 0,
   );
 
   async function compare() {
@@ -62,6 +66,10 @@
   function cueTime(row: CueListDiffRow, side: 'base' | 'ours' | 'theirs'): string {
     const cue = row[side];
     return cue ? `${formatMs(cue.startMs)} → ${formatMs(cue.endMs)}` : '';
+  }
+
+  function textDiffFor(row: CueListDiffRow) {
+    return threeWayTextDiff(row.base?.text ?? '', row.ours?.text ?? '', row.theirs?.text ?? '');
   }
 </script>
 
@@ -126,7 +134,8 @@
         <span class="added"><strong>{comparison.diff.summary.added}</strong> added</span>
         <span class="removed"><strong>{comparison.diff.summary.removed}</strong> removed</span>
         <span class="modified"><strong>{comparison.diff.summary.modified}</strong> modified</span>
-        <span><strong>{comparison.diff.summary.conflicts}</strong> conflicts</span>
+        <span><strong>{comparison.diff.summary.conflicts}</strong> cue conflicts</span>
+        <span class="text-conflicts"><strong>{textConflictCount}</strong> text conflicts</span>
         <label class="unchanged-toggle">
           <input type="checkbox" bind:checked={showUnchanged} /> Show unchanged
         </label>
@@ -144,16 +153,26 @@
           </thead>
           <tbody>
             {#each visibleRows as row (row.key)}
-              <tr class:conflict={row.conflict}>
+              {@const inlineDiff = textDiffFor(row)}
+              <tr class:conflict={row.conflict} class:text-conflict={inlineDiff.conflicts.length > 0}>
                 <th scope="row">
                   <span class="badge {row.kind}">{row.kind}</span>
-                  {#if row.conflict}<span class="conflict-label">conflict</span>{/if}
+                  {#if row.conflict}<span class="conflict-label">cue conflict</span>{/if}
+                  {#if inlineDiff.conflicts.length > 0}
+                    <span class="text-conflict-label">text conflict</span>
+                  {/if}
                   <small>@ {formatMs(row.anchorMs)}</small>
                 </th>
                 {#each ['base', 'ours', 'theirs'] as side}
                   <td class:missing={!row[side as 'base' | 'ours' | 'theirs']}>
                     <small>{cueTime(row, side as 'base' | 'ours' | 'theirs')}</small>
-                    <div>{cueText(row, side as 'base' | 'ours' | 'theirs')}</div>
+                    {#if side === 'base' || !row[side as 'base' | 'ours' | 'theirs']}
+                      <div>{cueText(row, side as 'base' | 'ours' | 'theirs')}</div>
+                    {:else if side === 'ours'}
+                      <InlineTextDiff segments={inlineDiff.ours} />
+                    {:else}
+                      <InlineTextDiff segments={inlineDiff.theirs} />
+                    {/if}
                   </td>
                 {/each}
               </tr>
@@ -274,6 +293,7 @@
   .summary .added { background: #dcfce7; color: #166534; }
   .summary .removed { background: #fee2e2; color: #991b1b; }
   .summary .modified { background: #fef3c7; color: #92400e; }
+  .summary .text-conflicts { background: #ede9fe; color: #6d28d9; }
   .unchanged-toggle {
     margin-left: auto;
     font-size: 0.85rem;
@@ -316,7 +336,8 @@
     margin-bottom: 0.35rem;
   }
   .badge,
-  .conflict-label {
+  .conflict-label,
+  .text-conflict-label {
     display: inline-block;
     padding: 0.15rem 0.45rem;
     border-radius: 999px;
@@ -328,7 +349,15 @@
   .badge.modified { background: #fef3c7; color: #92400e; }
   .badge.unchanged { background: #e5e7eb; color: #4b5563; }
   .conflict-label { background: #ede9fe; color: #6d28d9; margin-left: 0.25rem; }
+  .text-conflict-label {
+    display: block;
+    width: fit-content;
+    margin-top: 0.3rem;
+    background: #7c3aed;
+    color: white;
+  }
   tr.conflict { box-shadow: inset 4px 0 #7c3aed; }
+  tr.text-conflict { background: #fdfbff; }
   td.missing { color: #a0a5ad; background: #fafafa; }
   .empty-state { padding: 2rem; text-align: center; }
   .empty-state h2 { margin-top: 0; }

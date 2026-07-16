@@ -5,3 +5,4 @@ export * from './schemas/user';
 export * from './queues';
 export * from './artifacts';
 export * from './cue-list-diff';
+export * from './text-diff';
