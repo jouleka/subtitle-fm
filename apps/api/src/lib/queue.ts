@@ -26,3 +26,7 @@ export const translateQueue = new Queue<JobPayloadByQueue['translate']>(QUEUE_NA
 export const publishQueue = new Queue<JobPayloadByQueue['publish']>(QUEUE_NAMES.publish, {
   connection,
 });
+export const cleanupMediaQueue = new Queue<JobPayloadByQueue['cleanup-media']>(
+  QUEUE_NAMES.cleanupMedia,
+  { connection },
+);

@@ -13,7 +13,9 @@ import { branches } from './routes/branches';
 import { audit } from './routes/audit';
 import { account } from './routes/account';
 import { v1 } from './routes/v1';
+import { legal } from './routes/legal';
 import { auth } from './lib/auth';
+import { jpGeoBlock } from './lib/geo-block';
 import { attachSession, type AuthVariables } from './lib/session';
 import { log } from './lib/log';
 
@@ -21,18 +23,28 @@ const WEB_ORIGIN = process.env.WEB_URL ?? 'http://localhost:5173';
 
 export const app = new Hono<{ Variables: AuthVariables }>();
 
-app.use('*', httpLogger((msg) => log.info(msg)));
+app.use(
+  '*',
+  httpLogger((msg) => log.info(msg)),
+);
 
 app.use(
   '*',
   cors({
     origin: WEB_ORIGIN,
     allowHeaders: ['Content-Type', 'Authorization', 'X-API-Key'],
-    exposeHeaders: ['X-RateLimit-Policy', 'X-RateLimit-Limit', 'X-RateLimit-Remaining', 'Retry-After'],
+    exposeHeaders: [
+      'X-RateLimit-Policy',
+      'X-RateLimit-Limit',
+      'X-RateLimit-Remaining',
+      'Retry-After',
+    ],
     allowMethods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     credentials: true,
   }),
 );
+
+app.use('*', jpGeoBlock);
 
 // Auth handler is mounted BEFORE attachSession on purpose: Better Auth handles
 // /api/auth/* requests itself and returns a Response (no next()), so attachSession
@@ -53,6 +65,7 @@ app.route('/webhooks/runpod', webhooksRunpod);
 app.route('/stremio', stremio);
 app.route('/account', account);
 app.route('/v1', v1);
+app.route('/legal', legal);
 
 const port = Number(process.env.API_PORT ?? 3000);
 log.info({ port }, 'api.listen');

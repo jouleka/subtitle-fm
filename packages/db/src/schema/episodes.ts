@@ -20,6 +20,7 @@ export const episodeStatusEnum = pgEnum('episode_status', [
   'in_review',
   'publishing',
   'published',
+  'removed',
   'failed',
 ]);
 

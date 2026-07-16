@@ -11,6 +11,7 @@ export type EpisodeStatus =
   | 'in_review'
   | 'publishing'
   | 'published'
+  | 'removed'
   | 'failed';
 
 export interface Episode {

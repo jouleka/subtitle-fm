@@ -1,5 +1,6 @@
 export * from './users';
 export * from './api-access';
+export * from './takedowns';
 export * from './shows';
 export * from './seasons';
 export * from './episodes';

@@ -13,6 +13,7 @@ const STATUS_LABELS: Record<EpisodeStatus, string> = {
   in_review: 'In review',
   publishing: 'Publishing',
   published: 'Published',
+  removed: 'Unavailable',
   failed: 'Needs attention',
 };
 
@@ -28,7 +29,8 @@ export function buildCatalog(shows: Show[], episodes: Episode[]): CatalogShow[] 
     .map((show) => ({
       ...show,
       episodes: (episodesByShow.get(show.id) ?? []).sort(
-        (left, right) => left.number - right.number || left.createdAt.localeCompare(right.createdAt),
+        (left, right) =>
+          left.number - right.number || left.createdAt.localeCompare(right.createdAt),
       ),
     }))
     .sort((left, right) => left.title.localeCompare(right.title));

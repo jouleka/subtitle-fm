@@ -9,6 +9,7 @@ export const EpisodeStatus = z.enum([
   'in_review',
   'publishing',
   'published',
+  'removed',
   'failed',
 ]);
 export type EpisodeStatus = z.infer<typeof EpisodeStatus>;

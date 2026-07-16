@@ -24,6 +24,7 @@
   <nav aria-label="Primary navigation">
     <a href="/#shows">Shows</a>
     <a href="/#submit">Submit</a>
+    <a href="/legal/takedown">Copyright</a>
     {#if user}
       <a href="/dashboard">API dashboard</a>
       <span class="user-name">{user.name ?? 'Contributor'}</span>
