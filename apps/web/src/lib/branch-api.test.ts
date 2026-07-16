@@ -41,4 +41,23 @@ describe('branch API (SFM-39)', () => {
       'merge_conflicts',
     );
   });
+
+  test('submits explicit reviewer decisions', async () => {
+    const fetchMock = mock(async () => Response.json({ branch: {}, mergeSnapshot: {} }));
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    await mergeSubtitleBranch('http://api.test', 'episode', 'branch', [
+      { key: '1000:0', choice: 'manual', manualText: 'reviewed' },
+    ]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api.test/episodes/episode/branches/branch/merge',
+      {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          resolutions: [{ key: '1000:0', choice: 'manual', manualText: 'reviewed' }],
+        }),
+      },
+    );
+  });
 });

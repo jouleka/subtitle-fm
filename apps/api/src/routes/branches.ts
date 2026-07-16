@@ -4,7 +4,7 @@ import { and, desc, eq, ne } from 'drizzle-orm';
 import { z } from 'zod';
 import * as Y from 'yjs';
 import { schema } from '@subtitle-fm/db';
-import { mergeCueLists, threeWayCueListDiff } from '@subtitle-fm/shared';
+import { resolveCueListMerge, threeWayCueListDiff } from '@subtitle-fm/shared';
 import { hydrateCuesIntoDoc, liveCuesFromSnapshot } from '@subtitle-fm/shared/yjs';
 import { db } from '../lib/db';
 import {
@@ -24,6 +24,34 @@ const createBranchSchema = z.object({
   baseSnapshotId: z.string().uuid(),
 });
 
+const conflictResolutionSchema = z
+  .object({
+    key: z.string().min(1).max(128),
+    choice: z.enum(['ours', 'theirs', 'manual']),
+    manualText: z.string().max(20_000).optional(),
+  })
+  .superRefine((resolution, context) => {
+    if (resolution.choice === 'manual' && resolution.manualText === undefined) {
+      context.addIssue({ code: 'custom', path: ['manualText'], message: 'manualText is required' });
+    }
+  });
+
+const mergeBranchSchema = z
+  .object({ resolutions: z.array(conflictResolutionSchema).max(10_000).default([]) })
+  .superRefine(({ resolutions }, context) => {
+    const seen = new Set<string>();
+    for (const [index, resolution] of resolutions.entries()) {
+      if (seen.has(resolution.key)) {
+        context.addIssue({
+          code: 'custom',
+          path: ['resolutions', index, 'key'],
+          message: 'duplicate conflict key',
+        });
+      }
+      seen.add(resolution.key);
+    }
+  });
+
 const branchFields = {
   id: schema.subtitleBranches.id,
   episodeId: schema.subtitleBranches.episodeId,
@@ -32,6 +60,7 @@ const branchFields = {
   status: schema.subtitleBranches.status,
   createdBy: schema.subtitleBranches.createdBy,
   mergedBy: schema.subtitleBranches.mergedBy,
+  mergeDecisions: schema.subtitleBranches.mergeDecisions,
   createdAt: schema.subtitleBranches.createdAt,
   updatedAt: schema.subtitleBranches.updatedAt,
   mergedAt: schema.subtitleBranches.mergedAt,
@@ -147,6 +176,10 @@ export const branches = new Hono<{ Variables: AuthVariables }>()
     const branchId = c.req.param('branchId');
     const branch = await branchWithBase(episodeId, branchId);
     if (!branch || branch.status !== 'open') return c.json({ error: 'branch_not_found' }, 404);
+    const parsedInput = mergeBranchSchema.safeParse(await c.req.json().catch(() => ({})));
+    if (!parsedInput.success) {
+      return c.json({ error: 'invalid_merge_resolutions', issues: parsedInput.error.issues }, 400);
+    }
 
     let liveState: Uint8Array;
     let branchState: Uint8Array;
@@ -159,13 +192,22 @@ export const branches = new Hono<{ Variables: AuthVariables }>()
       return c.json({ error: 'collab_unavailable' }, 503);
     }
 
-    const merged = mergeCueLists(
+    const merged = resolveCueListMerge(
       liveCuesFromSnapshot(branch.baseYjsState),
       liveCuesFromSnapshot(liveState),
       liveCuesFromSnapshot(branchState),
+      parsedInput.data.resolutions,
     );
-    if (merged.conflicts.length > 0) {
-      return c.json({ error: 'merge_conflicts', conflicts: merged.conflicts }, 409);
+    if (merged.unresolvedKeys.length > 0 || merged.invalidKeys.length > 0) {
+      return c.json(
+        {
+          error: 'merge_conflicts',
+          conflicts: merged.conflicts,
+          unresolvedKeys: merged.unresolvedKeys,
+          invalidKeys: merged.invalidKeys,
+        },
+        409,
+      );
     }
 
     const document = new Y.Doc();
@@ -194,6 +236,7 @@ export const branches = new Hono<{ Variables: AuthVariables }>()
         yjsState: branchState,
         status: 'merged',
         mergedBy: c.get('user')!.id,
+        mergeDecisions: merged.decisions,
         mergedAt: new Date(),
         updatedAt: new Date(),
       })

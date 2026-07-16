@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { LiveCue } from './yjs';
-import { mergeCueLists, threeWayCueListDiff } from './cue-list-diff';
+import { mergeCueLists, resolveCueListMerge, threeWayCueListDiff } from './cue-list-diff';
 
 function cue(overrides: Partial<LiveCue> = {}): LiveCue {
   return {
@@ -114,5 +114,43 @@ describe('mergeCueLists (SFM-39)', () => {
       ['keep', 0],
       ['added', 1],
     ]);
+  });
+});
+
+describe('resolveCueListMerge (SFM-40)', () => {
+  const base = cue({ id: 'same', text: 'base' });
+  const ours = { ...base, text: 'live edit' };
+  const theirs = { ...base, text: 'branch edit' };
+
+  test.each([
+    ['ours', undefined, 'live edit'],
+    ['theirs', undefined, 'branch edit'],
+    ['manual', 'reviewed wording', 'reviewed wording'],
+  ] as const)('applies a %s decision', (choice, manualText, expected) => {
+    const result = resolveCueListMerge([base], [ours], [theirs], [
+      { key: '1000:0', choice, ...(manualText === undefined ? {} : { manualText }) },
+    ]);
+    expect(result.unresolvedKeys).toHaveLength(0);
+    expect(result.cues[0]!.text).toBe(expected);
+    expect(result.decisions[0]).toMatchObject({
+      key: '1000:0',
+      choice,
+      baseText: 'base',
+      oursText: 'live edit',
+      theirsText: 'branch edit',
+      resultText: expected,
+    });
+  });
+
+  test('refuses an incomplete or stale resolution set', () => {
+    const missing = resolveCueListMerge([base], [ours], [theirs], []);
+    expect(missing.cues).toHaveLength(0);
+    expect(missing.unresolvedKeys).toEqual(['1000:0']);
+
+    const stale = resolveCueListMerge([base], [ours], [theirs], [
+      { key: '9999:0', choice: 'ours' },
+    ]);
+    expect(stale.invalidKeys).toEqual(['9999:0']);
+    expect(stale.unresolvedKeys).toEqual(['1000:0']);
   });
 });

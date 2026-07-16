@@ -1,0 +1,1 @@
+ALTER TABLE "subtitle_branches" ADD COLUMN "merge_decisions" jsonb;

@@ -1,4 +1,5 @@
 import type { LiveCue } from '@subtitle-fm/shared/yjs';
+import type { AppliedCueConflictDecision, CueConflictResolution } from '@subtitle-fm/shared';
 import type { SnapshotCompareResponse } from './snapshot-diff-api';
 
 export interface SubtitleBranch {
@@ -9,6 +10,7 @@ export interface SubtitleBranch {
   status: 'open' | 'merged';
   createdBy: string | null;
   mergedBy: string | null;
+  mergeDecisions: AppliedCueConflictDecision[] | null;
   createdAt: string;
   updatedAt: string;
   mergedAt: string | null;
@@ -55,10 +57,16 @@ export async function mergeSubtitleBranch(
   apiBase: string,
   episodeId: string,
   branchId: string,
+  resolutions: CueConflictResolution[] = [],
 ): Promise<void> {
   const response = await fetch(
     `${apiBase}/episodes/${encodeURIComponent(episodeId)}/branches/${encodeURIComponent(branchId)}/merge`,
-    { method: 'POST', credentials: 'include' },
+    {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ resolutions }),
+    },
   );
   await jsonOrError(response);
 }

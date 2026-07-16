@@ -8,13 +8,18 @@
     type SnapshotMeta,
   } from '$lib/snapshot-diff-api';
   import InlineTextDiff from '$lib/InlineTextDiff.svelte';
+  import ConflictResolutionModal from '$lib/ConflictResolutionModal.svelte';
   import {
     createSubtitleBranch,
     fetchBranchDiff,
     mergeSubtitleBranch,
     type SubtitleBranch,
   } from '$lib/branch-api';
-  import { threeWayTextDiff, type CueListDiffRow } from '@subtitle-fm/shared';
+  import {
+    threeWayTextDiff,
+    type CueConflictResolution,
+    type CueListDiffRow,
+  } from '@subtitle-fm/shared';
   import type { PageData } from './$types';
 
   let { data }: { data: PageData } = $props();
@@ -44,6 +49,8 @@
   let branchName = $state('');
   let branchBaseId = $state(initialBranchBaseId);
   let branchBusy = $state<string | null>(null);
+  let resolutionBranch = $state<SubtitleBranch | null>(null);
+  let resolutionConflicts = $state<CueListDiffRow[]>([]);
   const canCompare = $derived(
     Boolean(baseId && oursId && theirsId && new Set([baseId, oursId, theirsId]).size === 3),
   );
@@ -106,21 +113,56 @@
     }
   }
 
-  async function mergeBranch(branch: SubtitleBranch) {
+  function markBranchMerged(branch: SubtitleBranch) {
+    branches = branches.map((item) =>
+      item.id === branch.id ? { ...item, status: 'merged' as const } : item,
+    );
+    comparison = null;
+    resolutionBranch = null;
+    resolutionConflicts = [];
+    message = `Branch ${branch.name} merged into live.`;
+  }
+
+  async function prepareMerge(branch: SubtitleBranch) {
     branchBusy = branch.id;
     message = null;
     try {
-      await mergeSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id);
-      branches = branches.map((item) =>
-        item.id === branch.id ? { ...item, status: 'merged' as const } : item,
-      );
-      comparison = null;
-      message = `Branch ${branch.name} merged into live.`;
+      comparison = await fetchBranchDiff(PUBLIC_API_URL, data.episode.id, branch.id);
+      const conflicts = comparison.diff.rows.filter((row) => row.conflict);
+      if (conflicts.length > 0) {
+        resolutionBranch = branch;
+        resolutionConflicts = conflicts;
+        message = `Resolve ${conflicts.length} conflict${conflicts.length === 1 ? '' : 's'} before merging ${branch.name}.`;
+      } else {
+        await mergeSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id, []);
+        markBranchMerged(branch);
+      }
     } catch (cause) {
-      message = `Merge stopped: ${(cause as Error).message}. Compare the branch to review conflicts.`;
+      message = `Merge preparation failed: ${(cause as Error).message}`;
     } finally {
       branchBusy = null;
     }
+  }
+
+  async function submitResolutions(resolutions: CueConflictResolution[]) {
+    const branch = resolutionBranch;
+    if (!branch) return;
+    branchBusy = branch.id;
+    message = null;
+    try {
+      await mergeSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id, resolutions);
+      markBranchMerged(branch);
+    } catch (cause) {
+      message = `Merge stopped: ${(cause as Error).message}. Live may have changed; close and reopen the resolver to refresh conflicts.`;
+    } finally {
+      branchBusy = null;
+    }
+  }
+
+  function closeResolution() {
+    if (branchBusy !== null) return;
+    resolutionBranch = null;
+    resolutionConflicts = [];
   }
 
   function cueText(row: CueListDiffRow, side: 'base' | 'ours' | 'theirs'): string {
@@ -194,7 +236,7 @@
               {#if branch.status === 'open'}
                 <a class="button-link" href={`/episodes/${data.episode.id}/edit?branch=${branch.id}`}>Edit</a>
                 <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>Compare</button>
-                <button class="merge-button" disabled={branchBusy !== null} onclick={() => mergeBranch(branch)}>
+                <button class="merge-button" disabled={branchBusy !== null} onclick={() => prepareMerge(branch)}>
                   {branchBusy === branch.id ? 'Working…' : 'Merge'}
                 </button>
               {:else}
@@ -305,6 +347,15 @@
           </tbody>
         </table>
       </div>
+  {/if}
+  {#if resolutionBranch}
+    <ConflictResolutionModal
+      branchName={resolutionBranch.name}
+      conflicts={resolutionConflicts}
+      busy={branchBusy === resolutionBranch.id}
+      onCancel={closeResolution}
+      onResolve={submitResolutions}
+    />
   {/if}
 </main>
 

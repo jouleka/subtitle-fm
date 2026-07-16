@@ -50,6 +50,27 @@ export interface CueListMergeResult {
   conflicts: CueListDiffRow[];
 }
 
+export type CueConflictChoice = 'ours' | 'theirs' | 'manual';
+
+export interface CueConflictResolution {
+  key: string;
+  choice: CueConflictChoice;
+  manualText?: string;
+}
+
+export interface AppliedCueConflictDecision extends CueConflictResolution {
+  baseText: string | null;
+  oursText: string | null;
+  theirsText: string | null;
+  resultText: string | null;
+}
+
+export interface ResolvedCueListMergeResult extends CueListMergeResult {
+  decisions: AppliedCueConflictDecision[];
+  unresolvedKeys: string[];
+  invalidKeys: string[];
+}
+
 type Bucket = { base: LiveCue[]; ours: LiveCue[]; theirs: LiveCue[] };
 
 function anchorFor(cue: LiveCue): number {
@@ -191,4 +212,56 @@ export function mergeCueLists(
     .sort((left, right) => left.startMs - right.startMs || left.orderIndex - right.orderIndex)
     .map((cue, orderIndex) => ({ ...cue, orderIndex }));
   return { cues: selected, conflicts: [] };
+}
+
+/** Merge while applying an explicit reviewer decision to every conflict. */
+export function resolveCueListMerge(
+  baseCues: LiveCue[],
+  oursCues: LiveCue[],
+  theirsCues: LiveCue[],
+  resolutions: CueConflictResolution[],
+): ResolvedCueListMergeResult {
+  const diff = threeWayCueListDiff(baseCues, oursCues, theirsCues);
+  const conflicts = diff.rows.filter((row) => row.conflict);
+  const conflictKeys = new Set(conflicts.map((row) => row.key));
+  const invalidKeys = resolutions
+    .map((resolution) => resolution.key)
+    .filter((key) => !conflictKeys.has(key));
+  const byKey = new Map(resolutions.map((resolution) => [resolution.key, resolution]));
+  const unresolvedKeys: string[] = [];
+  const decisions: AppliedCueConflictDecision[] = [];
+
+  const selected = diff.rows.map((row) => {
+    if (!row.conflict) return row.theirsChange !== 'unchanged' ? row.theirs : row.ours;
+    const resolution = byKey.get(row.key);
+    if (!resolution) {
+      unresolvedKeys.push(row.key);
+      return null;
+    }
+
+    let resolved: LiveCue | null;
+    if (resolution.choice === 'ours') resolved = row.ours;
+    else if (resolution.choice === 'theirs') resolved = row.theirs;
+    else {
+      const template = row.ours ?? row.theirs ?? row.base;
+      resolved = template ? { ...template, text: resolution.manualText ?? '' } : null;
+    }
+    decisions.push({
+      ...resolution,
+      baseText: row.base?.text ?? null,
+      oursText: row.ours?.text ?? null,
+      theirsText: row.theirs?.text ?? null,
+      resultText: resolved?.text ?? null,
+    });
+    return resolved;
+  });
+
+  if (unresolvedKeys.length > 0 || invalidKeys.length > 0) {
+    return { cues: [], conflicts, decisions, unresolvedKeys, invalidKeys };
+  }
+  const cues = selected
+    .filter((cue): cue is LiveCue => cue !== null)
+    .sort((left, right) => left.startMs - right.startMs || left.orderIndex - right.orderIndex)
+    .map((cue, orderIndex) => ({ ...cue, orderIndex }));
+  return { cues, conflicts: [], decisions, unresolvedKeys: [], invalidKeys: [] };
 }

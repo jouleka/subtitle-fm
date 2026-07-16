@@ -228,7 +228,11 @@ describe('subtitle branches (SFM-39)', () => {
 
     const response = await request(`/episodes/${EPISODE_ID}/branches/${branch.id}/merge`, 'POST');
     expect(response.status).toBe(409);
-    expect(await response.json()).toMatchObject({ error: 'merge_conflicts' });
+    expect(await response.json()).toMatchObject({
+      error: 'merge_conflicts',
+      unresolvedKeys: ['0:0'],
+      invalidKeys: [],
+    });
     expect(restoreMock).not.toHaveBeenCalled();
     const [stored] = await db
       .select({ status: schema.subtitleBranches.status })
@@ -240,5 +244,61 @@ describe('subtitle branches (SFM-39)', () => {
         ),
       );
     expect(stored!.status).toBe('open');
+  });
+
+  test('applies and records a manual reviewer decision in the merge result', async () => {
+    const base = await createBase();
+    const branch = await createBranch(base.id);
+    liveState = encoded([cue(FIRST_ID, 'live'), cue(SECOND_ID, 'second', 1, 2_000)]);
+    branchState = encoded([cue(FIRST_ID, 'branch'), cue(SECOND_ID, 'second', 1, 2_000)]);
+
+    const response = await request(`/episodes/${EPISODE_ID}/branches/${branch.id}/merge`, 'POST', {
+      resolutions: [{ key: '0:0', choice: 'manual', manualText: 'reviewed result' }],
+    });
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as { mergeSnapshot: { id: string } };
+    const [snapshot] = await db
+      .select({ yjsState: schema.snapshots.yjsState })
+      .from(schema.snapshots)
+      .where(eq(schema.snapshots.id, body.mergeSnapshot.id));
+    expect(liveCuesFromSnapshot(snapshot!.yjsState)[0]!.text).toBe('reviewed result');
+
+    const [stored] = await db
+      .select({ mergeDecisions: schema.subtitleBranches.mergeDecisions })
+      .from(schema.subtitleBranches)
+      .where(eq(schema.subtitleBranches.id, branch.id));
+    expect(stored!.mergeDecisions).toEqual([
+      {
+        key: '0:0',
+        choice: 'manual',
+        manualText: 'reviewed result',
+        baseText: 'first',
+        oursText: 'live',
+        theirsText: 'branch',
+        resultText: 'reviewed result',
+      },
+    ]);
+  });
+
+  test('rejects duplicate or incomplete resolution payloads', async () => {
+    const base = await createBase();
+    const branch = await createBranch(base.id);
+    const duplicate = await request(
+      `/episodes/${EPISODE_ID}/branches/${branch.id}/merge`,
+      'POST',
+      {
+        resolutions: [
+          { key: '0:0', choice: 'ours' },
+          { key: '0:0', choice: 'theirs' },
+        ],
+      },
+    );
+    expect(duplicate.status).toBe(400);
+    expect(await duplicate.json()).toMatchObject({ error: 'invalid_merge_resolutions' });
+
+    const manual = await request(`/episodes/${EPISODE_ID}/branches/${branch.id}/merge`, 'POST', {
+      resolutions: [{ key: '0:0', choice: 'manual' }],
+    });
+    expect(manual.status).toBe(400);
   });
 });

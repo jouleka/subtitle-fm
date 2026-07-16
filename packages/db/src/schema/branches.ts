@@ -1,6 +1,7 @@
 import {
   customType,
   index,
+  jsonb,
   pgEnum,
   pgTable,
   text,
@@ -8,6 +9,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { AppliedCueConflictDecision } from '@subtitle-fm/shared';
 import { episodes } from './episodes';
 import { snapshots } from './snapshots';
 import { users } from './users';
@@ -36,6 +38,7 @@ export const subtitleBranches = pgTable(
     status: subtitleBranchStatusEnum('status').notNull().default('open'),
     createdBy: uuid('created_by').references(() => users.id, { onDelete: 'set null' }),
     mergedBy: uuid('merged_by').references(() => users.id, { onDelete: 'set null' }),
+    mergeDecisions: jsonb('merge_decisions').$type<AppliedCueConflictDecision[]>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
     mergedAt: timestamp('merged_at', { withTimezone: true }),
