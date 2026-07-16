@@ -4,19 +4,15 @@ export interface ParsedStremioSubId {
   source: StremioSubSource;
   externalId: string;
   episode: number;
-  /**
-   * imdb season segment, if present and valid. Reserved for the future
-   * per-season model (SFM-63 follow-up) — NOT yet used in resolution; the
-   * Stremio route still matches by absolute episode `number`.
-   */
+  /** imdb season segment, if present and valid. */
   season?: number;
 }
 
 /**
  * Parse a Stremio subtitles request into our lookup keys, or null if unsupported.
- * Series ids: imdb `tt<digits>:<season>:<episode>` (season ignored — episodes have no
- * season, only `number`), `kitsu:<id>:<episode>`, `mal:<id>:<episode>`. Movies and
- * malformed ids return null (caller serves []).
+ * Series ids: imdb `tt<digits>:<season>:<episode>`, `kitsu:<id>:<episode>`,
+ * `mal:<id>:<episode>`. Kitsu/MAL omit a season and resolve to season 1.
+ * Movies and malformed ids return null (caller serves []).
  */
 export function parseStremioSubtitleId(type: string, id: string): ParsedStremioSubId | null {
   if (type === 'movie') {
@@ -38,8 +34,7 @@ export function parseStremioSubtitleId(type: string, id: string): ParsedStremioS
   if (!Number.isInteger(episode) || episode < 0) return null;
   const prefix = parts[0]!;
   if (prefix.startsWith('tt')) {
-    // imdb ids are `tt<digits>:<season>:<episode>` — capture the season (parts[1])
-    // for the future per-season model; resolution still uses the episode segment.
+    // imdb ids are `tt<digits>:<season>:<episode>`.
     const season = Number(parts[1]);
     const base = { source: 'imdb' as const, externalId: prefix, episode };
     return Number.isInteger(season) && season >= 0 ? { ...base, season } : base;

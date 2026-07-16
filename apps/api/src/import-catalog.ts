@@ -44,7 +44,7 @@ async function main(): Promise<void> {
 
   if (dryRun) {
     for (const s of shows) {
-      const nums = s.episodes.map((e) => e.number).join(', ');
+      const nums = s.episodes.map((e) => `S${e.seasonNumber}E${e.number}`).join(', ');
       console.log(`  • ${s.id} (${s.slug}) — ${s.episodes.length} episode(s): ${nums}`);
     }
     console.log('[dry-run] manifest valid; nothing written.');
@@ -72,7 +72,8 @@ async function main(): Promise<void> {
       `${marker} ${r.showId} (${r.show}) — created ${r.created.length}, ` +
         `skipped ${r.skipped.length}, failed ${r.failed.length}${suffix}`,
     );
-    for (const f of r.failed) console.log(`    ! ep ${f.number}: ${f.error}`);
+    for (const f of r.failed)
+      console.log(`    ! season ${f.seasonNumber} ep ${f.number}: ${f.error}`);
   }
   console.log(
     `\n[summary] shows: ${results.length} (${showErrors} errored) | ` +

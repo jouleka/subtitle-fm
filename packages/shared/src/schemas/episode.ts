@@ -16,6 +16,7 @@ export type EpisodeStatus = z.infer<typeof EpisodeStatus>;
 export const Episode = z.object({
   id: z.string().uuid(),
   showId: z.string(),
+  seasonId: z.string().uuid().nullable(),
   number: z.number().int().nonnegative(),
   title: z.string().nullable(),
   sourceLanguage: z.string().default('ja'),

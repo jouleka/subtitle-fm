@@ -66,7 +66,8 @@ async function main(): Promise<void> {
       `skipped ${r.skipped.length}, failed ${r.failed.length}` +
       (r.showError ? ` [show error: ${r.showError}]` : ''),
   );
-  for (const f of r.failed) console.log(`    ! ep ${f.number}: ${f.error}`);
+  for (const f of r.failed)
+    console.log(`    ! season ${f.seasonNumber} ep ${f.number}: ${f.error}`);
   await connection.quit();
   process.exit(r.show === 'error' || r.failed.length > 0 ? 1 : 0);
 }

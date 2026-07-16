@@ -3,19 +3,20 @@
 // what the api returns after Drizzle serialization, not the DB row exactly.
 
 export type EpisodeStatus =
-  | "uploaded"
-  | "preprocessing"
-  | "transcribing"
-  | "translating"
-  | "ready_for_edit"
-  | "in_review"
-  | "publishing"
-  | "published"
-  | "failed";
+  | 'uploaded'
+  | 'preprocessing'
+  | 'transcribing'
+  | 'translating'
+  | 'ready_for_edit'
+  | 'in_review'
+  | 'publishing'
+  | 'published'
+  | 'failed';
 
 export interface Episode {
   id: string;
   showId: string;
+  seasonId: string | null;
   number: number;
   title: string | null;
   sourceLanguage: string;

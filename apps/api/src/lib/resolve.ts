@@ -29,7 +29,8 @@ export const defaultFetchJson: FetchJson = async (url) => {
  *   {slug}        -> show slug
  *   {malId}       -> MAL id
  * The template MUST contain {number} (or {number:0N}); otherwise every episode
- * would resolve to the same URL and collide on (show_id, number).
+ * would resolve to the same URL within a season and collide on the episode
+ * identity constraint.
  */
 export function applyMediaTemplate(
   template: string,

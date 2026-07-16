@@ -15,6 +15,7 @@ import { z } from 'zod';
 const externalId = z.string().min(1).optional();
 
 const catalogEpisodeSchema = z.object({
+  seasonNumber: z.number().int().nonnegative().default(1),
   number: z.number().int().nonnegative(),
   sourceUrl: z.string().url(),
   title: z.string().optional(),
@@ -38,18 +39,19 @@ export const catalogShowSchema = z
     episodes: z.array(catalogEpisodeSchema).min(1),
   })
   .superRefine((show, ctx) => {
-    // A duplicate number with a different sourceUrl would be silently dropped at
-    // insert time (the (show_id, number) unique index skips it) — catch it here.
-    const seen = new Set<number>();
+    // A duplicate season+episode with a different sourceUrl would be silently
+    // dropped by the DB constraint, so reject it before starting an import.
+    const seen = new Set<string>();
     for (const e of show.episodes) {
-      if (seen.has(e.number)) {
+      const identity = `${e.seasonNumber}:${e.number}`;
+      if (seen.has(identity)) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: `duplicate episode number ${e.number} in show "${show.id}"`,
+          message: `duplicate season ${e.seasonNumber} episode ${e.number} in show "${show.id}"`,
           path: ['episodes'],
         });
       }
-      seen.add(e.number);
+      seen.add(identity);
     }
   });
 

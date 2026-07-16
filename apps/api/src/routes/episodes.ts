@@ -17,6 +17,7 @@ import { publishQueue } from '../lib/queue';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
+  seasonNumber: z.number().int().nonnegative().default(1),
   number: z.number().int().nonnegative(),
   title: z.string().optional(),
   sourceUrl: z.string().url(),
@@ -245,20 +246,30 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       return c.json({ error: 'show_not_found', showId: input.showId }, 404);
     }
 
-    const created: { number: number; id: string }[] = [];
-    const skipped: { number: number; existingId: string }[] = [];
-    const failed: { number: number; error: string }[] = [];
+    const created: { seasonNumber: number; number: number; id: string }[] = [];
+    const skipped: { seasonNumber: number; number: number; existingId: string }[] = [];
+    const failed: { seasonNumber: number; number: number; error: string }[] = [];
 
     // Sequential on purpose: each insert autocommits before the next, so an
-    // in-batch duplicate number conflicts on the (show_id, number) unique index
+    // in-batch duplicate identity conflicts on the season-aware unique constraint
     // and is skipped — not a parallel race. Do NOT convert to Promise.all
     // without a different in-batch dedup strategy.
     for (const item of input.episodes) {
       const result = await ingestEpisode({ showId: input.showId, ...item });
-      if (result.status === 'created') created.push({ number: item.number, id: result.episode.id });
+      if (result.status === 'created')
+        created.push({
+          seasonNumber: item.seasonNumber,
+          number: item.number,
+          id: result.episode.id,
+        });
       else if (result.status === 'exists')
-        skipped.push({ number: item.number, existingId: result.existingId });
-      else failed.push({ number: item.number, error: result.error });
+        skipped.push({
+          seasonNumber: item.seasonNumber,
+          number: item.number,
+          existingId: result.existingId,
+        });
+      else
+        failed.push({ seasonNumber: item.seasonNumber, number: item.number, error: result.error });
     }
 
     log.info(

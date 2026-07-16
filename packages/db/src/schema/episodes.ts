@@ -6,7 +6,7 @@ import {
   timestamp,
   pgEnum,
   index,
-  uniqueIndex,
+  unique,
 } from 'drizzle-orm/pg-core';
 import { shows } from './shows';
 import { seasons } from './seasons';
@@ -44,10 +44,11 @@ export const episodes = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // UNIQUE so dedup is a DB invariant (bulk ingest uses onConflictDoNothing on
-    // this). NOTE: when the per-season model lands (SFM-66), this becomes
-    // (show_id, season_id, number) NULLS NOT DISTINCT via a follow-up migration.
-    showNumberIdx: uniqueIndex('episodes_show_number_idx').on(t.showId, t.number),
+    // NULLS NOT DISTINCT keeps unseasoned content idempotent while allowing the
+    // same episode number in multiple seasons of one show.
+    showSeasonNumberUnique: unique('episodes_show_season_number_unique')
+      .on(t.showId, t.seasonId, t.number)
+      .nullsNotDistinct(),
     statusIdx: index('episodes_status_idx').on(t.status),
   }),
 );

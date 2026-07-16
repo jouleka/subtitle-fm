@@ -12,26 +12,46 @@ export type IngestResult =
   | { status: 'exists'; existingId: string }
   | { status: 'failed'; error: string };
 
+async function ensureSeason(showId: string, seasonNumber: number): Promise<string> {
+  const [created] = await db
+    .insert(schema.seasons)
+    .values({ showId, number: seasonNumber, title: `Season ${seasonNumber}` })
+    .onConflictDoNothing({ target: [schema.seasons.showId, schema.seasons.number] })
+    .returning({ id: schema.seasons.id });
+  if (created) return created.id;
+
+  const [existing] = await db
+    .select({ id: schema.seasons.id })
+    .from(schema.seasons)
+    .where(and(eq(schema.seasons.showId, showId), eq(schema.seasons.number, seasonNumber)))
+    .limit(1);
+  if (!existing) throw new Error('season_conflict_unresolved');
+  return existing.id;
+}
+
 /**
  * Insert one episode + enqueue its preprocess job, idempotent on
- * (showId, number) via the DB unique index. Shared by the single-create route,
- * the bulk route, and the catalog-import CLI so the insert/enqueue/dedup logic
- * has one home. The caller MUST have already verified the show exists (FK is the
- * backstop). Sequential callers only — bulk relies on per-item autocommit so an
- * in-batch duplicate number conflicts here rather than racing.
+ * (showId, seasonId, number) via the DB unique constraint. The public input uses
+ * a season number so callers never need to know database ids; the matching
+ * season row is created idempotently. Shared by the single-create route, bulk
+ * route, and catalog-import CLI so insert/enqueue/dedup has one home. The caller
+ * MUST have already verified the show exists (FK is the backstop).
  */
 export async function ingestEpisode(input: {
   showId: string;
+  seasonNumber?: number;
   number: number;
   title?: string;
   sourceUrl: string;
   sourceLanguage: string;
   targetLanguage: string;
 }): Promise<IngestResult> {
+  const seasonId = await ensureSeason(input.showId, input.seasonNumber ?? 1);
   const [episode] = await db
     .insert(schema.episodes)
     .values({
       showId: input.showId,
+      seasonId,
       number: input.number,
       title: input.title ?? null,
       sourceLanguage: input.sourceLanguage,
@@ -39,17 +59,23 @@ export async function ingestEpisode(input: {
       status: 'uploaded',
       sourceKey: ownedSourceKeyFromUrl(input.sourceUrl),
     })
-    .onConflictDoNothing({ target: [schema.episodes.showId, schema.episodes.number] })
+    .onConflictDoNothing({
+      target: [schema.episodes.showId, schema.episodes.seasonId, schema.episodes.number],
+    })
     .returning();
 
   if (!episode) {
-    // (showId, number) already exists — surface the existing id so callers can
+    // (showId, seasonId, number) already exists — surface the existing id so callers can
     // report "skipped" / 409 without a second insert.
     const [existing] = await db
       .select({ id: schema.episodes.id })
       .from(schema.episodes)
       .where(
-        and(eq(schema.episodes.showId, input.showId), eq(schema.episodes.number, input.number)),
+        and(
+          eq(schema.episodes.showId, input.showId),
+          eq(schema.episodes.seasonId, seasonId),
+          eq(schema.episodes.number, input.number),
+        ),
       )
       .limit(1);
     if (!existing) return { status: 'failed', error: 'conflict_unresolved' };
@@ -156,9 +182,9 @@ export interface ShowImportResult {
   showId: string;
   show: 'created' | 'exists' | 'error';
   showError?: string;
-  created: { number: number; id: string }[];
-  skipped: { number: number; existingId: string }[];
-  failed: { number: number; error: string }[];
+  created: { seasonNumber: number; number: number; id: string }[];
+  skipped: { seasonNumber: number; number: number; existingId: string }[];
+  failed: { seasonNumber: number; number: number; error: string }[];
 }
 
 /**
@@ -172,24 +198,30 @@ export async function importCatalog(shows: CatalogShow[]): Promise<ShowImportRes
   const results: ShowImportResult[] = [];
   for (const show of shows) {
     // Declared outside the try so a mid-show throw still reports what was done.
-    const created: { number: number; id: string }[] = [];
-    const skipped: { number: number; existingId: string }[] = [];
-    const failed: { number: number; error: string }[] = [];
+    const created: { seasonNumber: number; number: number; id: string }[] = [];
+    const skipped: { seasonNumber: number; number: number; existingId: string }[] = [];
+    const failed: { seasonNumber: number; number: number; error: string }[] = [];
     try {
       const ensured = await ensureShow(show);
       for (const ep of show.episodes) {
         const r = await ingestEpisode({
           showId: show.id,
+          seasonNumber: ep.seasonNumber,
           number: ep.number,
           title: ep.title,
           sourceUrl: ep.sourceUrl,
           sourceLanguage: ep.sourceLanguage,
           targetLanguage: ep.targetLanguage,
         });
-        if (r.status === 'created') created.push({ number: ep.number, id: r.episode.id });
+        if (r.status === 'created')
+          created.push({ seasonNumber: ep.seasonNumber, number: ep.number, id: r.episode.id });
         else if (r.status === 'exists')
-          skipped.push({ number: ep.number, existingId: r.existingId });
-        else failed.push({ number: ep.number, error: r.error });
+          skipped.push({
+            seasonNumber: ep.seasonNumber,
+            number: ep.number,
+            existingId: r.existingId,
+          });
+        else failed.push({ seasonNumber: ep.seasonNumber, number: ep.number, error: r.error });
       }
       results.push({ showId: show.id, show: ensured.status, created, skipped, failed });
     } catch (e) {
