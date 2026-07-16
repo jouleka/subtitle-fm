@@ -13,6 +13,7 @@
     createSubtitleBranch,
     fetchBranchDiff,
     mergeSubtitleBranch,
+    rejectSubtitleBranch,
     type SubtitleBranch,
   } from '$lib/branch-api';
   import {
@@ -159,6 +160,25 @@
     }
   }
 
+  async function rejectBranch(branch: SubtitleBranch) {
+    if (!data.access.canMerge) return;
+    if (!confirm(`Reject branch ${branch.name}? Its author will lose reputation for rejected cues.`)) {
+      return;
+    }
+    branchBusy = branch.id;
+    message = null;
+    try {
+      const result = await rejectSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id);
+      branches = branches.map((item) => (item.id === branch.id ? result.branch : item));
+      comparison = null;
+      message = `Branch ${branch.name} rejected; author reputation decreased by ${result.reputationPenalty}.`;
+    } catch (cause) {
+      message = `Branch rejection failed: ${(cause as Error).message}`;
+    } finally {
+      branchBusy = null;
+    }
+  }
+
   function closeResolution() {
     if (branchBusy !== null) return;
     resolutionBranch = null;
@@ -198,6 +218,13 @@
       <div>
         <h2 id="branches-heading">Translation branches</h2>
         <p>Fork a milestone, edit it collaboratively, then compare and merge it back into live.</p>
+        <p class="access-summary">
+          Role <strong>{data.access.showRole?.toUpperCase() ?? data.access.globalRole}</strong>
+          · <strong>{data.access.reputation}</strong> reputation
+          {#if !data.access.canMerge}
+            · merge needs {data.access.thresholds.merge} reputation and TL/TLC/QC
+          {/if}
+        </p>
       </div>
       {#if data.snapshots.length > 0}
         <div class="branch-create">
@@ -236,9 +263,16 @@
               {#if branch.status === 'open'}
                 <a class="button-link" href={`/episodes/${data.episode.id}/edit?branch=${branch.id}`}>Edit</a>
                 <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>Compare</button>
-                <button class="merge-button" disabled={branchBusy !== null} onclick={() => prepareMerge(branch)}>
-                  {branchBusy === branch.id ? 'Working…' : 'Merge'}
-                </button>
+                {#if data.access.canMerge}
+                  <button class="merge-button" disabled={branchBusy !== null} onclick={() => prepareMerge(branch)}>
+                    {branchBusy === branch.id ? 'Working…' : 'Merge'}
+                  </button>
+                  <button class="reject-button" disabled={branchBusy !== null} onclick={() => rejectBranch(branch)}>
+                    Reject
+                  </button>
+                {:else}
+                  <span class="permission-note">Suggestion awaiting reviewer</span>
+                {/if}
               {:else}
                 <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>View diff</button>
               {/if}
@@ -431,6 +465,11 @@
     margin: 0;
     color: #646973;
   }
+  .branch-heading .access-summary {
+    margin-top: 0.35rem;
+    color: #5b21b6;
+    font-size: 0.82rem;
+  }
   .branch-create {
     display: flex;
     gap: 0.55rem;
@@ -482,6 +521,7 @@
     font-size: 0.72rem;
   }
   .branch-status.merged { background: #e5e7eb; color: #4b5563; }
+  .branch-status.rejected { background: #fee2e2; color: #991b1b; }
   .branch-actions {
     display: flex;
     gap: 0.4rem;
@@ -504,6 +544,8 @@
     background: white;
   }
   .branch-actions .merge-button { background: #5b21b6; border-color: #5b21b6; }
+  .branch-actions .reject-button { background: #991b1b; border-color: #991b1b; }
+  .permission-note { align-self: center; color: #7c3aed; font-size: 0.78rem; }
   .controls label {
     display: grid;
     gap: 0.35rem;

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, mock, test } from 'bun:test';
-import { createSubtitleBranch, fetchBranchDiff, mergeSubtitleBranch } from './branch-api';
+import {
+  createSubtitleBranch,
+  fetchBranchDiff,
+  mergeSubtitleBranch,
+  rejectSubtitleBranch,
+} from './branch-api';
 
 const realFetch = globalThis.fetch;
 
@@ -59,5 +64,18 @@ describe('branch API (SFM-39)', () => {
         }),
       },
     );
+  });
+
+  test('rejects a branch through the authenticated review endpoint', async () => {
+    const fetchMock = mock(async () =>
+      Response.json({ branch: { status: 'rejected' }, reputationPenalty: 2 }),
+    );
+    globalThis.fetch = fetchMock as unknown as typeof fetch;
+    const result = await rejectSubtitleBranch('http://api.test', 'episode', 'branch');
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://api.test/episodes/episode/branches/branch/reject',
+      { method: 'POST', credentials: 'include' },
+    );
+    expect(result.reputationPenalty).toBe(2);
   });
 });

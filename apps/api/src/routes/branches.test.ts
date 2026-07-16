@@ -95,7 +95,7 @@ async function createBranch(baseSnapshotId: string, name = 'alternate') {
 beforeAll(async () => {
   await db.delete(schema.shows).where(eq(schema.shows.id, SHOW_ID));
   await db.delete(schema.users).where(eq(schema.users.id, USER.id));
-  await db.insert(schema.users).values(USER);
+  await db.insert(schema.users).values({ ...USER, role: 'admin' });
   await db.insert(schema.shows).values({ id: SHOW_ID, title: 'SFM-39', slug: SHOW_ID });
   await db.insert(schema.episodes).values({
     id: EPISODE_ID,
@@ -112,6 +112,11 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
+  await db.delete(schema.showRoleAssignments).where(eq(schema.showRoleAssignments.showId, SHOW_ID));
+  await db
+    .update(schema.users)
+    .set({ role: 'admin', reputation: 0 })
+    .where(eq(schema.users.id, USER.id));
   await clearBranchesAndSnapshots();
   liveState = encoded([cue(FIRST_ID, 'first'), cue(SECOND_ID, 'second', 1, 2_000)]);
   branchState = liveState;
@@ -203,7 +208,11 @@ describe('subtitle branches (SFM-39)', () => {
 
     const response = await request(`/episodes/${EPISODE_ID}/branches/${branch.id}/merge`, 'POST');
     expect(response.status).toBe(200);
-    const body = (await response.json()) as { mergeSnapshot: { id: string } };
+    const body = (await response.json()) as {
+      mergeSnapshot: { id: string };
+      reputationAward: number;
+    };
+    expect(body.reputationAward).toBe(1);
     expect(restoreMock).toHaveBeenCalledWith(EPISODE_ID, body.mergeSnapshot.id);
     const [snapshot] = await db
       .select({ yjsState: schema.snapshots.yjsState })
@@ -218,6 +227,11 @@ describe('subtitle branches (SFM-39)', () => {
       .from(schema.subtitleBranches)
       .where(eq(schema.subtitleBranches.id, branch.id));
     expect(stored).toEqual({ status: 'merged', mergedBy: USER.id });
+    const [author] = await db
+      .select({ reputation: schema.users.reputation })
+      .from(schema.users)
+      .where(eq(schema.users.id, USER.id));
+    expect(author!.reputation).toBe(1);
   });
 
   test('returns conflicts without changing live or closing the branch', async () => {
@@ -278,6 +292,59 @@ describe('subtitle branches (SFM-39)', () => {
         resultText: 'reviewed result',
       },
     ]);
+  });
+
+  test('requires show role plus reputation before merging', async () => {
+    const base = await createBase();
+    const branch = await createBranch(base.id);
+    await db
+      .update(schema.users)
+      .set({ role: 'editor', reputation: 9 })
+      .where(eq(schema.users.id, USER.id));
+    await db.insert(schema.showRoleAssignments).values({
+      userId: USER.id,
+      showId: SHOW_ID,
+      role: 'tl',
+    });
+
+    const denied = await request(`/episodes/${EPISODE_ID}/branches/${branch.id}/merge`, 'POST');
+    expect(denied.status).toBe(403);
+    expect(await denied.json()).toMatchObject({
+      error: 'merge_forbidden',
+      access: { reputation: 9, showRole: 'tl', canMerge: false },
+    });
+
+    await db
+      .update(schema.users)
+      .set({ reputation: 10 })
+      .where(eq(schema.users.id, USER.id));
+    const allowed = await request(`/episodes/${EPISODE_ID}/branches/${branch.id}/merge`, 'POST');
+    expect(allowed.status).toBe(200);
+  });
+
+  test('rejects a branch and decays its author reputation by changed cue count', async () => {
+    const base = await createBase();
+    const branch = await createBranch(base.id);
+    branchState = encoded([cue(FIRST_ID, 'rejected edit'), cue(SECOND_ID, 'second', 1, 2_000)]);
+    await db
+      .update(schema.users)
+      .set({ reputation: 5 })
+      .where(eq(schema.users.id, USER.id));
+
+    const response = await request(
+      `/episodes/${EPISODE_ID}/branches/${branch.id}/reject`,
+      'POST',
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      branch: { status: 'rejected', rejectedBy: USER.id },
+      reputationPenalty: 1,
+    });
+    const [author] = await db
+      .select({ reputation: schema.users.reputation })
+      .from(schema.users)
+      .where(eq(schema.users.id, USER.id));
+    expect(author!.reputation).toBe(4);
   });
 
   test('rejects duplicate or incomplete resolution payloads', async () => {

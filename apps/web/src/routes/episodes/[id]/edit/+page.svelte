@@ -179,6 +179,10 @@
   const unreviewedCount = $derived(cues.filter((c) => c.needsReview).length);
 
   async function publish() {
+    if (!data.access.canPublish) {
+      publishMsg = `Publish requires ${data.access.thresholds.publish} reputation and a TL or QC role.`;
+      return;
+    }
     publishing = true;
     publishMsg = null;
     try {
@@ -450,6 +454,9 @@
       <button class:active={activeTab === "cues"} onclick={() => (activeTab = "cues")}>Cues</button>
       <button class:active={activeTab === "glossary"} onclick={() => (activeTab = "glossary")}>Glossary</button>
       <span class="conn">collab: {connectionStatus}</span>
+      <span class="access-badge">
+        {data.access.showRole?.toUpperCase() ?? data.access.globalRole} · {data.access.reputation} rep
+      </span>
       {#if data.branch}
         <span class="branch-badge">branch: {data.branch.name}</span>
       {:else}
@@ -458,10 +465,13 @@
           disabled={publishing ||
             publishQueued ||
             unreviewedCount > 0 ||
+            !data.access.canPublish ||
             data.episode.status === "published"}
           title={unreviewedCount > 0
             ? `${unreviewedCount} cue(s) need review`
-            : "Publish finalized ASS, SRT, and VTT subtitles"}
+            : !data.access.canPublish
+              ? `Requires ${data.access.thresholds.publish} reputation and TL/QC role`
+              : "Publish finalized ASS, SRT, and VTT subtitles"}
           onclick={publish}
         >{publishing ? "Queuing…" : publishQueued ? "Publishing…" : "Publish"}</button>
         {#if publishMsg}<span class="publish-msg">{publishMsg}</span>{/if}
@@ -583,6 +593,14 @@
     font-size: 0.8rem;
     color: #888;
   }
+  .access-badge {
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    background: #f3e8ff;
+    color: #6b21a8;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
   .publish-btn {
     padding: 0.35rem 0.75rem;
     cursor: pointer;
@@ -686,13 +704,11 @@
   @media (min-width: 1024px) {
     .editor {
       grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 320px);
-      grid-template-rows: 1fr auto;
+      grid-template-rows: auto 1fr auto;
       grid-template-areas:
+        "tabs tabs tabs"
         "video cues glossary"
         "waveform waveform glossary";
-    }
-    .tabs {
-      display: none;
     }
     .pane {
       display: block;

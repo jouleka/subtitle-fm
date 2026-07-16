@@ -7,13 +7,15 @@ export interface SubtitleBranch {
   episodeId: string;
   name: string;
   baseSnapshotId: string;
-  status: 'open' | 'merged';
+  status: 'open' | 'merged' | 'rejected';
   createdBy: string | null;
   mergedBy: string | null;
+  rejectedBy: string | null;
   mergeDecisions: AppliedCueConflictDecision[] | null;
   createdAt: string;
   updatedAt: string;
   mergedAt: string | null;
+  rejectedAt: string | null;
 }
 
 export interface SubtitleBranchDetail extends SubtitleBranch {
@@ -69,4 +71,19 @@ export async function mergeSubtitleBranch(
     },
   );
   await jsonOrError(response);
+}
+
+export async function rejectSubtitleBranch(
+  apiBase: string,
+  episodeId: string,
+  branchId: string,
+): Promise<{ branch: SubtitleBranch; reputationPenalty: number }> {
+  const response = await fetch(
+    `${apiBase}/episodes/${encodeURIComponent(episodeId)}/branches/${encodeURIComponent(branchId)}/reject`,
+    { method: 'POST', credentials: 'include' },
+  );
+  return (await jsonOrError(response)) as unknown as {
+    branch: SubtitleBranch;
+    reputationPenalty: number;
+  };
 }

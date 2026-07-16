@@ -4,6 +4,7 @@ import type { PageServerLoad } from './$types';
 import type { Episode } from '$lib/types';
 import type { SnapshotMeta } from '$lib/snapshot-diff-api';
 import type { SubtitleBranch } from '$lib/branch-api';
+import type { ShowAccess } from '$lib/show-access-api';
 
 export const load: PageServerLoad = async ({ params, fetch, parent, request }) => {
   const { session } = await parent();
@@ -22,9 +23,14 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request }) =
   }
 
   const episode = (await episodeResponse.json()) as Episode;
+  const accessResponse = await fetch(`${PUBLIC_API_URL}/shows/${episode.showId}/access`, {
+    headers,
+  });
+  if (!accessResponse.ok) throw error(accessResponse.status, 'Failed to load contributor access');
+  const access = (await accessResponse.json()) as ShowAccess;
   const { snapshots } = (await snapshotsResponse.json()) as { snapshots: SnapshotMeta[] };
   const branches = branchesResponse.ok
     ? ((await branchesResponse.json()) as { branches: SubtitleBranch[] }).branches
     : [];
-  return { episode, snapshots, branches };
+  return { episode, snapshots, branches, access };
 };

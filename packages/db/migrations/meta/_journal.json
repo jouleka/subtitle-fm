@@ -99,6 +99,13 @@
       "when": 1784227101162,
       "tag": "0013_marvelous_swordsman",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1784227992216,
+      "tag": "0014_striped_amphibian",
+      "breakpoints": true
     }
   ]
 }

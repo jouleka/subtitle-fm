@@ -72,7 +72,7 @@ async function cleanup() {
 beforeAll(async () => {
   await cleanup();
   (authModule.auth.api.getSession as unknown) = mockGetSession;
-  await db.insert(schema.users).values(FAKE_USER);
+  await db.insert(schema.users).values({ ...FAKE_USER, role: "admin" });
   await db.insert(schema.shows).values({ id: SHOW_ID, title: "SFM-29 Publish", slug: "sfm-29-publish" });
   for (const [id, flagged] of [
     [EP_CLEAN, false],
@@ -112,10 +112,15 @@ beforeAll(async () => {
 afterAll(async () => {
   await cleanup();
 });
-beforeEach(() => {
+beforeEach(async () => {
   mockGetSession.mockReset();
   publishAddMock.mockReset();
   publishAddMock.mockImplementation(async () => ({}));
+  await db.delete(schema.showRoleAssignments).where(eq(schema.showRoleAssignments.showId, SHOW_ID));
+  await db
+    .update(schema.users)
+    .set({ role: "admin", reputation: 0 })
+    .where(eq(schema.users.id, FAKE_USER.id));
 });
 afterEach(() => mockGetSession.mockReset());
 
@@ -123,6 +128,24 @@ describe("POST /episodes/:id/publish", () => {
   test("401 without a session (intent: publishing is gated)", async () => {
     anon();
     expect((await app.request(`/episodes/${EP_CLEAN}/publish`, { method: "POST" })).status).toBe(401);
+  });
+  test("403 below the publish reputation threshold even with a publishing role", async () => {
+    await db
+      .update(schema.users)
+      .set({ role: "editor", reputation: 29 })
+      .where(eq(schema.users.id, FAKE_USER.id));
+    await db.insert(schema.showRoleAssignments).values({
+      userId: FAKE_USER.id,
+      showId: SHOW_ID,
+      role: "qc",
+    });
+    authed();
+    const res = await app.request(`/episodes/${EP_CLEAN}/publish`, { method: "POST" });
+    expect(res.status).toBe(403);
+    expect(await res.json()).toMatchObject({
+      error: "publish_forbidden",
+      access: { reputation: 29, showRole: "qc", canPublish: false },
+    });
   });
   test("409 when a cue still needs review (intent: never auto-publish unreviewed cues)", async () => {
     authed();

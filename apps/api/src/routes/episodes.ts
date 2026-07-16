@@ -14,6 +14,7 @@ import { presignGet } from '../lib/r2';
 import { ingestEpisode } from '../lib/ingest';
 import { episodePeaksKey } from '../lib/artifacts';
 import { publishQueue } from '../lib/queue';
+import { getShowAccess } from '../lib/show-access';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
@@ -132,11 +133,17 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
   .post('/:id/publish', requireSession, async (c) => {
     const id = c.req.param('id') as string;
     const [ep] = await db
-      .select({ id: schema.episodes.id, status: schema.episodes.status })
+      .select({
+        id: schema.episodes.id,
+        showId: schema.episodes.showId,
+        status: schema.episodes.status,
+      })
       .from(schema.episodes)
       .where(eq(schema.episodes.id, id))
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
+    const access = await getShowAccess(c.get('user')!.id, ep.showId);
+    if (!access?.canPublish) return c.json({ error: 'publish_forbidden', access }, 403);
     const keys = publishedSubtitleKeys(id);
     // Both terminal and in-flight retries are idempotent. The latter matters
     // because publish now crosses Postgres and Redis rather than completing in

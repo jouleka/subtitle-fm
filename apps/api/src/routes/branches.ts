@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { zValidator } from '@hono/zod-validator';
-import { and, desc, eq, ne } from 'drizzle-orm';
+import { and, desc, eq, ne, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import * as Y from 'yjs';
 import { schema } from '@subtitle-fm/db';
@@ -13,6 +13,9 @@ import {
   restoreCollaborativeSnapshot,
 } from '../lib/collab';
 import { requireSession, type AuthVariables } from '../lib/session';
+import { getShowAccess } from '../lib/show-access';
+
+const MAX_REPUTATION_CHANGE_PER_BRANCH = 20;
 
 const createBranchSchema = z.object({
   name: z
@@ -60,10 +63,12 @@ const branchFields = {
   status: schema.subtitleBranches.status,
   createdBy: schema.subtitleBranches.createdBy,
   mergedBy: schema.subtitleBranches.mergedBy,
+  rejectedBy: schema.subtitleBranches.rejectedBy,
   mergeDecisions: schema.subtitleBranches.mergeDecisions,
   createdAt: schema.subtitleBranches.createdAt,
   updatedAt: schema.subtitleBranches.updatedAt,
   mergedAt: schema.subtitleBranches.mergedAt,
+  rejectedAt: schema.subtitleBranches.rejectedAt,
 };
 
 async function branchWithBase(episodeId: string, branchId: string) {
@@ -74,9 +79,11 @@ async function branchWithBase(episodeId: string, branchId: string) {
       baseLabel: schema.snapshots.label,
       baseCreatedAt: schema.snapshots.createdAt,
       baseYjsState: schema.snapshots.yjsState,
+      showId: schema.episodes.showId,
     })
     .from(schema.subtitleBranches)
     .innerJoin(schema.snapshots, eq(schema.subtitleBranches.baseSnapshotId, schema.snapshots.id))
+    .innerJoin(schema.episodes, eq(schema.subtitleBranches.episodeId, schema.episodes.id))
     .where(
       and(
         eq(schema.subtitleBranches.id, branchId),
@@ -154,6 +161,7 @@ export const branches = new Hono<{ Variables: AuthVariables }>()
       baseYjsState: _baseYjsState,
       baseLabel: _baseLabel,
       baseCreatedAt: _baseCreatedAt,
+      showId: _showId,
       ...metadata
     } = branch;
 
@@ -176,6 +184,8 @@ export const branches = new Hono<{ Variables: AuthVariables }>()
     const branchId = c.req.param('branchId');
     const branch = await branchWithBase(episodeId, branchId);
     if (!branch || branch.status !== 'open') return c.json({ error: 'branch_not_found' }, 404);
+    const access = await getShowAccess(c.get('user')!.id, branch.showId);
+    if (!access?.canMerge) return c.json({ error: 'merge_forbidden', access }, 403);
     const parsedInput = mergeBranchSchema.safeParse(await c.req.json().catch(() => ({})));
     if (!parsedInput.success) {
       return c.json({ error: 'invalid_merge_resolutions', issues: parsedInput.error.issues }, 400);
@@ -192,12 +202,11 @@ export const branches = new Hono<{ Variables: AuthVariables }>()
       return c.json({ error: 'collab_unavailable' }, 503);
     }
 
-    const merged = resolveCueListMerge(
-      liveCuesFromSnapshot(branch.baseYjsState),
-      liveCuesFromSnapshot(liveState),
-      liveCuesFromSnapshot(branchState),
-      parsedInput.data.resolutions,
-    );
+    const baseCues = liveCuesFromSnapshot(branch.baseYjsState);
+    const liveCues = liveCuesFromSnapshot(liveState);
+    const branchCues = liveCuesFromSnapshot(branchState);
+    const diff = threeWayCueListDiff(baseCues, liveCues, branchCues);
+    const merged = resolveCueListMerge(baseCues, liveCues, branchCues, parsedInput.data.resolutions);
     if (merged.unresolvedKeys.length > 0 || merged.invalidKeys.length > 0) {
       return c.json(
         {
@@ -248,13 +257,85 @@ export const branches = new Hono<{ Variables: AuthVariables }>()
       )
       .returning(branchFields);
     if (!updated) return c.json({ error: 'branch_already_merged', mergeSnapshot: snapshot }, 409);
-    return c.json({ branch: updated, mergeSnapshot: snapshot });
+    const resolutions = new Map(
+      parsedInput.data.resolutions.map((resolution) => [resolution.key, resolution.choice]),
+    );
+    const reputationAward = Math.min(
+      MAX_REPUTATION_CHANGE_PER_BRANCH,
+      diff.rows.filter(
+        (row) =>
+          row.theirsChange !== 'unchanged' &&
+          (!row.conflict || resolutions.get(row.key) === 'theirs'),
+      ).length,
+    );
+    if (branch.createdBy && reputationAward > 0) {
+      await db
+        .update(schema.users)
+        .set({ reputation: sql`${schema.users.reputation} + ${reputationAward}` })
+        .where(eq(schema.users.id, branch.createdBy));
+    }
+    return c.json({ branch: updated, mergeSnapshot: snapshot, reputationAward });
+  })
+  .post('/:branchId/reject', async (c) => {
+    const episodeId = c.req.param('episodeId') as string;
+    const branch = await branchWithBase(episodeId, c.req.param('branchId'));
+    if (!branch || branch.status !== 'open') return c.json({ error: 'branch_not_found' }, 404);
+    const access = await getShowAccess(c.get('user')!.id, branch.showId);
+    if (!access?.canMerge) return c.json({ error: 'reject_forbidden', access }, 403);
+
+    let branchState: Uint8Array;
+    try {
+      branchState = await fetchBranchDocumentState(branch.id);
+    } catch {
+      return c.json({ error: 'collab_unavailable' }, 503);
+    }
+    const baseCues = liveCuesFromSnapshot(branch.baseYjsState);
+    const rejectedChanges = threeWayCueListDiff(
+      baseCues,
+      baseCues,
+      liveCuesFromSnapshot(branchState),
+    ).rows.filter((row) => row.theirsChange !== 'unchanged').length;
+    const reputationPenalty = Math.min(MAX_REPUTATION_CHANGE_PER_BRANCH, rejectedChanges);
+
+    const [updated] = await db
+      .update(schema.subtitleBranches)
+      .set({
+        yjsState: branchState,
+        status: 'rejected',
+        rejectedBy: c.get('user')!.id,
+        rejectedAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(
+        and(
+          eq(schema.subtitleBranches.id, branch.id),
+          eq(schema.subtitleBranches.status, 'open'),
+        ),
+      )
+      .returning(branchFields);
+    if (!updated) return c.json({ error: 'branch_already_closed' }, 409);
+    if (branch.createdBy && reputationPenalty > 0) {
+      await db
+        .update(schema.users)
+        .set({
+          reputation: sql`greatest(0, ${schema.users.reputation} - ${reputationPenalty})`,
+        })
+        .where(eq(schema.users.id, branch.createdBy));
+    }
+    return c.json({ branch: updated, reputationPenalty });
   })
   .get('/:branchId', async (c) => {
     const episodeId = c.req.param('episodeId') as string;
     const branch = await branchWithBase(episodeId, c.req.param('branchId'));
     if (!branch) return c.json({ error: 'branch_not_found' }, 404);
-    const { yjsState, baseYjsState: _baseYjsState, baseLabel, baseCreatedAt, ...metadata } = branch;
+    const {
+      yjsState,
+      baseYjsState: _baseYjsState,
+      baseLabel,
+      baseCreatedAt,
+      showId: _showId,
+      ...metadata
+    } = branch;
     return c.json({
       ...metadata,
       base: { id: branch.baseSnapshotId, label: baseLabel, createdAt: baseCreatedAt },

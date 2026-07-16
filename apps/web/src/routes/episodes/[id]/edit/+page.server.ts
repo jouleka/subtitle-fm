@@ -4,6 +4,7 @@ import { PUBLIC_API_URL } from "$env/static/public";
 import type { Cue, Episode } from "$lib/types";
 import type { GlossaryTerm } from "@subtitle-fm/shared";
 import type { SubtitleBranchDetail } from "$lib/branch-api";
+import type { ShowAccess } from "$lib/show-access-api";
 
 export const load: PageServerLoad = async ({ params, fetch, parent, request, url }) => {
   const { session } = await parent();
@@ -18,7 +19,7 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request, url
   const episode = (await epRes.json()) as Episode;
 
   const branchId = url.searchParams.get("branch");
-  const [cuesRes, glossaryRes, branchRes] = await Promise.all([
+  const [cuesRes, glossaryRes, branchRes, accessRes] = await Promise.all([
     fetch(`${PUBLIC_API_URL}/episodes/${params.id}/cues`, { headers: { cookie } }),
     fetch(`${PUBLIC_API_URL}/shows/${episode.showId}/glossary`, { headers: { cookie } }),
     branchId
@@ -26,6 +27,7 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request, url
           headers: { cookie },
         })
       : Promise.resolve(null),
+    fetch(`${PUBLIC_API_URL}/shows/${episode.showId}/access`, { headers: { cookie } }),
   ]);
   if (!cuesRes.ok) throw error(cuesRes.status, "Failed to load cues");
   if (branchRes && !branchRes.ok) throw error(branchRes.status, "Branch not found");
@@ -34,6 +36,8 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request, url
   const glossaryTerms = glossaryRes.ok
     ? ((await glossaryRes.json()) as { glossaryTerms: GlossaryTerm[] }).glossaryTerms
     : [];
+  if (!accessRes.ok) throw error(accessRes.status, "Failed to load contributor access");
+  const access = (await accessRes.json()) as ShowAccess;
 
-  return { episode, cues, glossaryTerms, branch };
+  return { episode, cues, glossaryTerms, branch, access };
 };
