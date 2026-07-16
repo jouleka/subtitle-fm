@@ -57,6 +57,14 @@ class TestComputeDefaultTrimBounds:
         assert bounds.start_sec == 100
         assert bounds.end_sec == 24 * 60 - 60
 
+    def test_short_custom_trim_is_not_overridden_by_fixed_margin(self) -> None:
+        bounds = compute_default_trim_bounds(
+            total_duration_sec=10,
+            leading_trim_sec=2,
+            trailing_trim_sec=2,
+        )
+        assert bounds == TrimBounds(start_sec=2, end_sec=8)
+
     def test_zero_duration_raises(self) -> None:
         # Intent: a 0-second source is a hard error, not a silent no-op.
         with pytest.raises(ValueError):

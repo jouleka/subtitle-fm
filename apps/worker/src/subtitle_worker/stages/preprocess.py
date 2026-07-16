@@ -136,9 +136,12 @@ def compute_default_trim_bounds(
     if total_duration_sec <= 0:
         raise ValueError(f"total_duration_sec must be > 0, got {total_duration_sec}")
 
-    # If the requested trim would consume the whole clip (plus a SHORT_CLIP_MARGIN_SEC
-    # margin so the result isn't a useless sliver), use the short-clip fallback.
-    if total_duration_sec <= leading_trim_sec + trailing_trim_sec + SHORT_CLIP_MARGIN_SEC:
+    # Require at least 30 seconds for normal episode-length media, but scale
+    # that guard down for short clips. Otherwise an explicit 2s + 2s trim on a
+    # 10s clip is unexpectedly replaced by the fallback even though 60% of the
+    # requested clip remains.
+    minimum_remaining_sec = min(SHORT_CLIP_MARGIN_SEC, total_duration_sec / 2)
+    if total_duration_sec <= leading_trim_sec + trailing_trim_sec + minimum_remaining_sec:
         edge = min(5.0, total_duration_sec / 4)
         return TrimBounds(start_sec=edge, end_sec=total_duration_sec - edge)
 
