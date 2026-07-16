@@ -90,6 +90,17 @@ and verifies each reaches `ready_for_edit`. See
 [`docs/runbooks/phase-1-e2e-smoke.md`](docs/runbooks/phase-1-e2e-smoke.md)
 for setup and `bun run smoke` to execute.
 
+## Backfill external show IDs
+
+Prepare a reviewed mapping using `apps/api/external-ids.example.json`, then validate it against the target database before writing:
+
+```bash
+bun run --filter @subtitle-fm/api backfill:external-ids external-ids.json --dry-run
+bun run --filter @subtitle-fm/api backfill:external-ids external-ids.json
+```
+
+The backfill is atomic and refuses missing shows, invalid ID formats, duplicate ownership, and overwriting a different existing ID.
+
 ## Status
 
 Pre-alpha scaffold. See design doc for roadmap.
