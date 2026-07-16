@@ -30,6 +30,19 @@ export interface Episode {
   updatedAt: string;
 }
 
+export interface Show {
+  id: string;
+  title: string;
+  slug: string;
+  description: string | null;
+  imdbId: string | null;
+  malId: string | null;
+  anilistId: string | null;
+  kitsuId: string | null;
+  coverUrl: string | null;
+  createdAt: string;
+}
+
 export interface Cue {
   id: string;
   episodeId: string;
