@@ -457,6 +457,7 @@
       <span class="access-badge">
         {data.access.showRole?.toUpperCase() ?? data.access.globalRole} · {data.access.reputation} rep
       </span>
+      <a class="audit-link" href={`/episodes/${data.episode.id}/audit`}>Audit history</a>
       {#if data.branch}
         <span class="branch-badge">branch: {data.branch.name}</span>
       {:else}
@@ -505,6 +506,7 @@
         {#each cues as cue (cue.id)}
           <CueRow
             {cue}
+            episodeId={data.episode.id}
             remoteUsers={presenceByCue.get(cue.id) ?? []}
             remoteCarets={caretsByCue.get(cue.id) ?? []}
             onFocusCue={setFocusedCue}
@@ -601,6 +603,7 @@
     font-size: 0.75rem;
     font-weight: 700;
   }
+  .audit-link { color: #5b21b6; font-size: 0.78rem; font-weight: 700; text-decoration: none; }
   .publish-btn {
     padding: 0.35rem 0.75rem;
     cursor: pointer;

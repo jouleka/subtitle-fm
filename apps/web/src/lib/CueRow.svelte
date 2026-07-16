@@ -4,9 +4,11 @@
   import { formatMs, parseTimecode } from "$lib/format";
   import { classifyCueKeydown } from "$lib/cue-keys";
   import { decorateWithRemoteCarets } from "$lib/remote-carets";
+  import CueHistory from "$lib/CueHistory.svelte";
 
   let {
     cue,
+    episodeId,
     onTextEdit,
     onRetime,
     remoteUsers = [],
@@ -21,6 +23,7 @@
     onDeleteCue,
   }: {
     cue: LiveCue;
+    episodeId: string;
     onTextEdit: (id: string, newText: string) => void;
     onRetime: (id: string, startMs: number, endMs: number) => RetimeResult;
     remoteUsers?: PresenceUser[];
@@ -242,6 +245,7 @@
       {/each}
     </span>
   {/if}
+  <CueHistory {episodeId} cueId={cue.id} />
   <button type="button" class="cue-delete" aria-label={`Delete cue ${cue.orderIndex + 1}`} onclick={() => onDeleteCue(cue.id)}>🗑</button>
 </li>
 

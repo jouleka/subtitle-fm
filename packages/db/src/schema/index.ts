@@ -7,6 +7,7 @@ export * from './glossary';
 export * from './snapshots';
 export * from './branches';
 export * from './show-roles';
+export * from './audit-log';
 export * from './webhook_events';
 export * from './sessions';
 export * from './accounts';
