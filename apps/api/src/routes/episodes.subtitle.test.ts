@@ -57,6 +57,8 @@ describe('GET /episodes/:id/subtitle.ass', () => {
     expect(presignGetMock).toHaveBeenLastCalledWith({
       bucket: 'media',
       key: `subtitles/${EP_PUB}/published.ass`,
+      responseContentType: 'text/plain; charset=utf-8',
+      responseContentDisposition: `attachment; filename="${EP_PUB}.ass"`,
     });
   });
 
@@ -79,6 +81,12 @@ describe('GET /episodes/:id/subtitle.srt', () => {
     expect(res.headers.get('location')).toBe(
       `https://r2.example/presigned/subtitles/${EP_PUB}/published.srt`,
     );
+    expect(presignGetMock).toHaveBeenLastCalledWith({
+      bucket: 'media',
+      key: `subtitles/${EP_PUB}/published.srt`,
+      responseContentType: 'application/x-subrip; charset=utf-8',
+      responseContentDisposition: `attachment; filename="${EP_PUB}.srt"`,
+    });
   });
   test('404 not_published for an unpublished episode', async () => {
     const res = await app.request(`/episodes/${EP_UNPUB}/subtitle.srt`);
@@ -98,6 +106,12 @@ describe('GET /episodes/:id/subtitle.vtt', () => {
     expect(res.headers.get('location')).toBe(
       `https://r2.example/presigned/subtitles/${EP_PUB}/published.vtt`,
     );
+    expect(presignGetMock).toHaveBeenLastCalledWith({
+      bucket: 'media',
+      key: `subtitles/${EP_PUB}/published.vtt`,
+      responseContentType: 'text/vtt; charset=utf-8',
+      responseContentDisposition: `attachment; filename="${EP_PUB}.vtt"`,
+    });
   });
   test('404 not_published for an unpublished episode', async () => {
     const res = await app.request(`/episodes/${EP_UNPUB}/subtitle.vtt`);

@@ -50,6 +50,12 @@ interface PresignOpts {
   expiresInSec?: number;
 }
 
+interface PresignGetOpts extends PresignOpts {
+  /** Override object metadata on the download response. */
+  responseContentType?: string;
+  responseContentDisposition?: string;
+}
+
 /**
  * Generate a presigned PUT URL the browser can upload to directly.
  * Default expiry: 15 minutes (enough for slow connections on large files,
@@ -80,10 +86,14 @@ export async function presignPut(opts: PresignOpts): Promise<string> {
  * rather than passing a baked URL through the queue. SigV4 caps expiry at
  * 7 days regardless.
  */
-export async function presignGet(opts: PresignOpts): Promise<string> {
+export async function presignGet(opts: PresignGetOpts): Promise<string> {
   const cmd = new GetObjectCommand({
     Bucket: R2_BUCKETS[opts.bucket](),
     Key: opts.key,
+    ...(opts.responseContentType ? { ResponseContentType: opts.responseContentType } : {}),
+    ...(opts.responseContentDisposition
+      ? { ResponseContentDisposition: opts.responseContentDisposition }
+      : {}),
   });
   return getSignedUrl(getClient(), cmd, { expiresIn: opts.expiresInSec ?? 3600 });
 }

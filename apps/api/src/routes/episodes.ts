@@ -87,7 +87,12 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: publishedSubtitleKeys(id).ass });
+    const url = await presignGet({
+      bucket: 'media',
+      key: publishedSubtitleKeys(id).ass,
+      responseContentType: 'text/plain; charset=utf-8',
+      responseContentDisposition: `attachment; filename="${id}.ass"`,
+    });
     return c.redirect(url, 302);
   })
   .get('/:id/subtitle.srt', async (c) => {
@@ -99,7 +104,12 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: publishedSubtitleKeys(id).srt });
+    const url = await presignGet({
+      bucket: 'media',
+      key: publishedSubtitleKeys(id).srt,
+      responseContentType: 'application/x-subrip; charset=utf-8',
+      responseContentDisposition: `attachment; filename="${id}.srt"`,
+    });
     return c.redirect(url, 302);
   })
   .get('/:id/subtitle.vtt', async (c) => {
@@ -111,7 +121,12 @@ export const episodes = new Hono<{ Variables: AuthVariables }>()
       .limit(1);
     if (!ep) return c.json({ error: 'episode_not_found' }, 404);
     if (ep.status !== 'published') return c.json({ error: 'not_published' }, 404);
-    const url = await presignGet({ bucket: 'media', key: publishedSubtitleKeys(id).vtt });
+    const url = await presignGet({
+      bucket: 'media',
+      key: publishedSubtitleKeys(id).vtt,
+      responseContentType: 'text/vtt; charset=utf-8',
+      responseContentDisposition: `attachment; filename="${id}.vtt"`,
+    });
     return c.redirect(url, 302);
   })
   .post('/:id/publish', requireSession, async (c) => {
