@@ -5,6 +5,7 @@ import { schema } from '@subtitle-fm/db';
 import { liveCuesFromSnapshot, replaceCuesInDoc } from '@subtitle-fm/shared/yjs';
 import * as Y from 'yjs';
 import { db } from './db';
+import { branchIdFromDocumentName } from './persistence';
 
 function sendJson(response: ServerResponse, status: number, body: unknown): void {
   response.writeHead(status, { 'content-type': 'application/json' });
@@ -18,16 +19,31 @@ function authorized(request: IncomingMessage): boolean {
 
 export async function currentDocumentState(
   instance: Hocuspocus,
-  episodeId: string,
+  documentName: string,
 ): Promise<Uint8Array | null> {
-  const [episode] = await db
-    .select({ id: schema.episodes.id })
-    .from(schema.episodes)
-    .where(eq(schema.episodes.id, episodeId))
-    .limit(1);
-  if (!episode) return null;
+  const branchId = branchIdFromDocumentName(documentName);
+  if (branchId) {
+    const [branch] = await db
+      .select({ id: schema.subtitleBranches.id })
+      .from(schema.subtitleBranches)
+      .where(
+        and(
+          eq(schema.subtitleBranches.id, branchId),
+          eq(schema.subtitleBranches.status, 'open'),
+        ),
+      )
+      .limit(1);
+    if (!branch) return null;
+  } else {
+    const [episode] = await db
+      .select({ id: schema.episodes.id })
+      .from(schema.episodes)
+      .where(eq(schema.episodes.id, documentName))
+      .limit(1);
+    if (!episode) return null;
+  }
 
-  const connection = await instance.openDirectConnection(episodeId);
+  const connection = await instance.openDirectConnection(documentName);
   try {
     return Y.encodeStateAsUpdate(connection.document!);
   } finally {

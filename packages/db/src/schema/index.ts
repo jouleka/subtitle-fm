@@ -5,6 +5,7 @@ export * from './episodes';
 export * from './cues';
 export * from './glossary';
 export * from './snapshots';
+export * from './branches';
 export * from './webhook_events';
 export * from './sessions';
 export * from './accounts';

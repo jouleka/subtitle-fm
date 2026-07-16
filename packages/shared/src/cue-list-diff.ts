@@ -45,6 +45,11 @@ export interface CueListDiff {
   summary: CueListDiffSummary;
 }
 
+export interface CueListMergeResult {
+  cues: LiveCue[];
+  conflicts: CueListDiffRow[];
+}
+
 type Bucket = { base: LiveCue[]; ours: LiveCue[]; theirs: LiveCue[] };
 
 function anchorFor(cue: LiveCue): number {
@@ -168,4 +173,22 @@ export function threeWayCueListDiff(
     if (row.conflict) summary.conflicts += 1;
   }
   return { rows, summary };
+}
+
+/** Apply non-conflicting branch changes (`theirs`) on top of live (`ours`). */
+export function mergeCueLists(
+  baseCues: LiveCue[],
+  oursCues: LiveCue[],
+  theirsCues: LiveCue[],
+): CueListMergeResult {
+  const diff = threeWayCueListDiff(baseCues, oursCues, theirsCues);
+  const conflicts = diff.rows.filter((row) => row.conflict);
+  if (conflicts.length > 0) return { cues: [], conflicts };
+
+  const selected = diff.rows
+    .map((row) => (row.theirsChange !== 'unchanged' ? row.theirs : row.ours))
+    .filter((cue): cue is LiveCue => cue !== null)
+    .sort((left, right) => left.startMs - right.startMs || left.orderIndex - right.orderIndex)
+    .map((cue, orderIndex) => ({ ...cue, orderIndex }));
+  return { cues: selected, conflicts: [] };
 }

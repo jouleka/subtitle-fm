@@ -8,6 +8,12 @@
     type SnapshotMeta,
   } from '$lib/snapshot-diff-api';
   import InlineTextDiff from '$lib/InlineTextDiff.svelte';
+  import {
+    createSubtitleBranch,
+    fetchBranchDiff,
+    mergeSubtitleBranch,
+    type SubtitleBranch,
+  } from '$lib/branch-api';
   import { threeWayTextDiff, type CueListDiffRow } from '@subtitle-fm/shared';
   import type { PageData } from './$types';
 
@@ -30,6 +36,14 @@
   let loading = $state(false);
   let message = $state<string | null>(null);
   let showUnchanged = $state(false);
+  const initialBranches = untrack(() => [...data.branches]);
+  const initialBranchBaseId = untrack(
+    () => data.snapshots[data.snapshots.length - 1]?.id ?? '',
+  );
+  let branches = $state<SubtitleBranch[]>(initialBranches);
+  let branchName = $state('');
+  let branchBaseId = $state(initialBranchBaseId);
+  let branchBusy = $state<string | null>(null);
   const canCompare = $derived(
     Boolean(baseId && oursId && theirsId && new Set([baseId, oursId, theirsId]).size === 3),
   );
@@ -56,6 +70,56 @@
       message = `Comparison failed: ${(cause as Error).message}`;
     } finally {
       loading = false;
+    }
+  }
+
+  async function createBranch() {
+    if (!branchName.trim() || !branchBaseId) return;
+    branchBusy = 'create';
+    message = null;
+    try {
+      const created = await createSubtitleBranch(PUBLIC_API_URL, data.episode.id, {
+        name: branchName.trim(),
+        baseSnapshotId: branchBaseId,
+      });
+      branches = [created, ...branches];
+      branchName = '';
+      message = `Branch ${created.name} created from its milestone.`;
+    } catch (cause) {
+      message = `Branch creation failed: ${(cause as Error).message}`;
+    } finally {
+      branchBusy = null;
+    }
+  }
+
+  async function compareBranch(branch: SubtitleBranch) {
+    branchBusy = branch.id;
+    message = null;
+    try {
+      comparison = await fetchBranchDiff(PUBLIC_API_URL, data.episode.id, branch.id);
+      message = `Comparing live with branch ${branch.name}.`;
+    } catch (cause) {
+      comparison = null;
+      message = `Branch comparison failed: ${(cause as Error).message}`;
+    } finally {
+      branchBusy = null;
+    }
+  }
+
+  async function mergeBranch(branch: SubtitleBranch) {
+    branchBusy = branch.id;
+    message = null;
+    try {
+      await mergeSubtitleBranch(PUBLIC_API_URL, data.episode.id, branch.id);
+      branches = branches.map((item) =>
+        item.id === branch.id ? { ...item, status: 'merged' as const } : item,
+      );
+      comparison = null;
+      message = `Branch ${branch.name} merged into live.`;
+    } catch (cause) {
+      message = `Merge stopped: ${(cause as Error).message}. Compare the branch to review conflicts.`;
+    } finally {
+      branchBusy = null;
     }
   }
 
@@ -86,6 +150,62 @@
     </div>
     <span class="episode-label">{data.episode.title ?? `Episode ${data.episode.number}`}</span>
   </header>
+
+  <section class="branch-panel" aria-labelledby="branches-heading">
+    <div class="branch-heading">
+      <div>
+        <h2 id="branches-heading">Translation branches</h2>
+        <p>Fork a milestone, edit it collaboratively, then compare and merge it back into live.</p>
+      </div>
+      {#if data.snapshots.length > 0}
+        <div class="branch-create">
+          <label>
+            <span>Name</span>
+            <input bind:value={branchName} placeholder="alternate-ed" pattern="[a-z0-9][a-z0-9._-]*" />
+          </label>
+          <label>
+            <span>Fork from</span>
+            <select bind:value={branchBaseId}>
+              {#each data.snapshots as snapshot (snapshot.id)}
+                <option value={snapshot.id}>{snapshot.label}</option>
+              {/each}
+            </select>
+          </label>
+          <button disabled={!branchName.trim() || branchBusy !== null} onclick={createBranch}>
+            {branchBusy === 'create' ? 'Creating…' : 'Create branch'}
+          </button>
+        </div>
+      {/if}
+    </div>
+    {#if data.snapshots.length === 0}
+      <p class="branch-empty">Create a named milestone before forking a branch.</p>
+    {:else if branches.length === 0}
+      <p class="branch-empty">No branches yet.</p>
+    {:else}
+      <div class="branch-list">
+        {#each branches as branch (branch.id)}
+          <article>
+            <div>
+              <strong>{branch.name}</strong>
+              <span class="branch-status {branch.status}">{branch.status}</span>
+              <small>base: {data.snapshots.find((item) => item.id === branch.baseSnapshotId)?.label ?? 'milestone'}</small>
+            </div>
+            <div class="branch-actions">
+              {#if branch.status === 'open'}
+                <a class="button-link" href={`/episodes/${data.episode.id}/edit?branch=${branch.id}`}>Edit</a>
+                <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>Compare</button>
+                <button class="merge-button" disabled={branchBusy !== null} onclick={() => mergeBranch(branch)}>
+                  {branchBusy === branch.id ? 'Working…' : 'Merge'}
+                </button>
+              {:else}
+                <button disabled={branchBusy !== null} onclick={() => compareBranch(branch)}>View diff</button>
+              {/if}
+            </div>
+          </article>
+        {/each}
+      </div>
+    {/if}
+  </section>
 
   {#if data.snapshots.length < 3}
     <section class="empty-state">
@@ -127,9 +247,11 @@
     {#if !canCompare}
       <p class="selection-warning">Choose three different snapshots.</p>
     {/if}
-    {#if message}<p class="message">{message}</p>{/if}
+  {/if}
 
-    {#if comparison}
+  {#if message}<p class="message">{message}</p>{/if}
+
+  {#if comparison}
       <section class="summary" aria-label="Diff summary">
         <span class="added"><strong>{comparison.diff.summary.added}</strong> added</span>
         <span class="removed"><strong>{comparison.diff.summary.removed}</strong> removed</span>
@@ -183,7 +305,6 @@
           </tbody>
         </table>
       </div>
-    {/if}
   {/if}
 </main>
 
@@ -226,6 +347,7 @@
     font-size: 0.85rem;
   }
   .controls,
+  .branch-panel,
   .summary,
   .empty-state,
   .table-scroll {
@@ -240,6 +362,97 @@
     padding: 1rem;
     align-items: end;
   }
+  .branch-panel {
+    margin-bottom: 1rem;
+    padding: 1rem;
+  }
+  .branch-heading {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: end;
+  }
+  .branch-heading h2 {
+    margin: 0 0 0.25rem;
+  }
+  .branch-heading p,
+  .branch-empty {
+    margin: 0;
+    color: #646973;
+  }
+  .branch-create {
+    display: flex;
+    gap: 0.55rem;
+    align-items: end;
+  }
+  .branch-create label {
+    display: grid;
+    gap: 0.25rem;
+  }
+  .branch-create label span {
+    color: #646973;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+  }
+  input {
+    min-height: 2.45rem;
+    box-sizing: border-box;
+    border: 1px solid #cbd0d8;
+    border-radius: 7px;
+    padding: 0 0.65rem;
+    font: inherit;
+  }
+  .branch-list {
+    display: grid;
+    gap: 0.55rem;
+    margin-top: 0.9rem;
+  }
+  .branch-list article {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 8px;
+  }
+  .branch-list small {
+    display: block;
+    margin-top: 0.2rem;
+    color: #737984;
+  }
+  .branch-status {
+    margin-left: 0.4rem;
+    padding: 0.12rem 0.4rem;
+    border-radius: 999px;
+    background: #dcfce7;
+    color: #166534;
+    font-size: 0.72rem;
+  }
+  .branch-status.merged { background: #e5e7eb; color: #4b5563; }
+  .branch-actions {
+    display: flex;
+    gap: 0.4rem;
+  }
+  .branch-actions button,
+  .button-link {
+    min-height: 2.2rem;
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.65rem;
+    border-radius: 7px;
+    font-size: 0.85rem;
+    text-decoration: none;
+  }
+  .button-link {
+    border: 1px solid #cbd0d8;
+    color: #17191d;
+    background: white;
+  }
+  .branch-actions .merge-button { background: #5b21b6; border-color: #5b21b6; }
   .controls label {
     display: grid;
     gap: 0.35rem;
@@ -373,5 +586,8 @@
     .controls button { grid-column: auto; }
     header { display: block; }
     .episode-label { display: inline-block; margin-top: 0.8rem; }
+    .branch-heading,
+    .branch-list article { display: grid; }
+    .branch-create { display: grid; grid-template-columns: 1fr; align-items: stretch; }
   }
 </style>

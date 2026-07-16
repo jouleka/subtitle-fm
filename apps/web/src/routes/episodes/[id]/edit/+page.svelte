@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, tick } from "svelte";
+  import { onMount, tick, untrack } from "svelte";
   import type { PageData } from "./$types";
   import { HocuspocusProvider } from "@hocuspocus/provider";
   import JASSUB from "jassub";
@@ -146,7 +146,10 @@
   }
 
   // Initial paint from SSR REST data; Y.Doc takes over once connected.
-  let cues = $state<LiveCue[]>(data.cues.map(restCueToLive));
+  const initialCues = untrack(() =>
+    data.branch ? data.branch.cues : data.cues.map(restCueToLive),
+  );
+  let cues = $state<LiveCue[]>(initialCues);
   let connectionStatus = $state<"idle" | "connecting" | "connected" | "disconnected">("idle");
   let activeTab = $state<"video" | "waveform" | "cues" | "glossary">("cues");
   let roster = $state<PresenceUser[]>([]);
@@ -201,7 +204,9 @@
     }
   }
 
-  const ready = $derived(["ready_for_edit", "in_review"].includes(data.episode.status));
+  const ready = $derived(
+    Boolean(data.branch) || ["ready_for_edit", "in_review"].includes(data.episode.status),
+  );
   const mediaUrl = $derived(data.episode.audioUrl);
 
   let provider: HocuspocusProvider | null = null;
@@ -242,7 +247,7 @@
 
     provider = new HocuspocusProvider({
       url: PUBLIC_COLLAB_URL,
-      name: data.episode.id,
+      name: data.branch ? `branch:${data.branch.id}` : data.episode.id,
       token,
       onStatus({ status }) {
         connectionStatus = status === "connected" ? "connected" : "connecting";
@@ -445,18 +450,22 @@
       <button class:active={activeTab === "cues"} onclick={() => (activeTab = "cues")}>Cues</button>
       <button class:active={activeTab === "glossary"} onclick={() => (activeTab = "glossary")}>Glossary</button>
       <span class="conn">collab: {connectionStatus}</span>
-      <button
-        class="publish-btn"
-        disabled={publishing ||
-          publishQueued ||
-          unreviewedCount > 0 ||
-          data.episode.status === "published"}
-        title={unreviewedCount > 0
-          ? `${unreviewedCount} cue(s) need review`
-          : "Publish finalized ASS, SRT, and VTT subtitles"}
-        onclick={publish}
-      >{publishing ? "Queuing…" : publishQueued ? "Publishing…" : "Publish"}</button>
-      {#if publishMsg}<span class="publish-msg">{publishMsg}</span>{/if}
+      {#if data.branch}
+        <span class="branch-badge">branch: {data.branch.name}</span>
+      {:else}
+        <button
+          class="publish-btn"
+          disabled={publishing ||
+            publishQueued ||
+            unreviewedCount > 0 ||
+            data.episode.status === "published"}
+          title={unreviewedCount > 0
+            ? `${unreviewedCount} cue(s) need review`
+            : "Publish finalized ASS, SRT, and VTT subtitles"}
+          onclick={publish}
+        >{publishing ? "Queuing…" : publishQueued ? "Publishing…" : "Publish"}</button>
+        {#if publishMsg}<span class="publish-msg">{publishMsg}</span>{/if}
+      {/if}
     </nav>
 
     <section class="pane pane-video" class:tab-active={activeTab === "video"}>
@@ -469,6 +478,9 @@
 
     <section class="pane pane-cues" class:tab-active={activeTab === "cues"}>
       <div class="cue-toolbar">
+        {#if data.branch}
+          <span class="branch-context">Editing branch: <strong>{data.branch.name}</strong></span>
+        {/if}
         <PresenceRoster users={roster} />
         <a href={`/episodes/${data.episode.id}/history`}>Compare snapshots</a>
       </div>
@@ -539,6 +551,14 @@
       "waveform"
       "glossary";
     min-height: 100dvh;
+  }
+  .branch-badge {
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    background: #ede9fe;
+    color: #5b21b6;
+    font-size: 0.8rem;
+    font-weight: 700;
   }
 
   .tabs {
@@ -634,6 +654,14 @@
   }
   .cue-toolbar a:hover {
     text-decoration: underline;
+  }
+  .branch-context {
+    margin-right: auto;
+    padding: 0.25rem 0.55rem;
+    border-radius: 999px;
+    background: #ede9fe;
+    color: #5b21b6;
+    font-size: 0.78rem;
   }
   .placeholder,
   .empty {

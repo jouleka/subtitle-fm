@@ -3,8 +3,9 @@ import { error, redirect } from "@sveltejs/kit";
 import { PUBLIC_API_URL } from "$env/static/public";
 import type { Cue, Episode } from "$lib/types";
 import type { GlossaryTerm } from "@subtitle-fm/shared";
+import type { SubtitleBranchDetail } from "$lib/branch-api";
 
-export const load: PageServerLoad = async ({ params, fetch, parent, request }) => {
+export const load: PageServerLoad = async ({ params, fetch, parent, request, url }) => {
   const { session } = await parent();
   if (!session?.user) {
     throw redirect(302, "/");
@@ -16,15 +17,23 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request }) =
   if (!epRes.ok) throw error(epRes.status, "Failed to load episode");
   const episode = (await epRes.json()) as Episode;
 
-  const [cuesRes, glossaryRes] = await Promise.all([
+  const branchId = url.searchParams.get("branch");
+  const [cuesRes, glossaryRes, branchRes] = await Promise.all([
     fetch(`${PUBLIC_API_URL}/episodes/${params.id}/cues`, { headers: { cookie } }),
     fetch(`${PUBLIC_API_URL}/shows/${episode.showId}/glossary`, { headers: { cookie } }),
+    branchId
+      ? fetch(`${PUBLIC_API_URL}/episodes/${params.id}/branches/${encodeURIComponent(branchId)}`, {
+          headers: { cookie },
+        })
+      : Promise.resolve(null),
   ]);
   if (!cuesRes.ok) throw error(cuesRes.status, "Failed to load cues");
+  if (branchRes && !branchRes.ok) throw error(branchRes.status, "Branch not found");
   const { cues } = (await cuesRes.json()) as { cues: Cue[] };
+  const branch = branchRes ? ((await branchRes.json()) as SubtitleBranchDetail) : null;
   const glossaryTerms = glossaryRes.ok
     ? ((await glossaryRes.json()) as { glossaryTerms: GlossaryTerm[] }).glossaryTerms
     : [];
 
-  return { episode, cues, glossaryTerms };
+  return { episode, cues, glossaryTerms, branch };
 };

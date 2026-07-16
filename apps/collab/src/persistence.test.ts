@@ -7,14 +7,17 @@ import { eq, and } from "drizzle-orm";
 import {
   CUES_ARRAY_KEY,
   liveCuesFromDoc,
+  liveCuesFromSnapshot,
   hydrateCuesIntoDoc,
   type CueSeed,
 } from "@subtitle-fm/shared/yjs";
 
 const SHOW_ID = "test-show-sfm25-persist";
 const EPISODE_ID = "66666666-6666-6666-6666-666666666661";
+const BRANCH_ID = "66666666-6666-4666-8666-666666666662";
 
 async function cleanup() {
+  await db.delete(schema.subtitleBranches).where(eq(schema.subtitleBranches.episodeId, EPISODE_ID));
   await db
     .delete(schema.snapshots)
     .where(eq(schema.snapshots.episodeId, EPISODE_ID));
@@ -139,5 +142,34 @@ describe("storeDocumentState", () => {
     Y.applyUpdate(restored, rows[0]!.yjsState);
     const live = liveCuesFromDoc(restored);
     expect(live[0]!.text).toBe("first cue (edited)");
+  });
+
+  test("loads and persists an isolated branch document", async () => {
+    const [base] = await db
+      .insert(schema.snapshots)
+      .values({ episodeId: EPISODE_ID, label: "branch-base", yjsState: new Uint8Array([0]) })
+      .returning({ id: schema.snapshots.id });
+    const doc = new Y.Doc();
+    hydrateCuesIntoDoc(doc, [{ ...cueSeeds[0]!, text: "branch fork" }]);
+    await db.insert(schema.subtitleBranches).values({
+      id: BRANCH_ID,
+      episodeId: EPISODE_ID,
+      name: "alternate",
+      baseSnapshotId: base!.id,
+      yjsState: Y.encodeStateAsUpdate(doc),
+    });
+
+    const documentName = `branch:${BRANCH_ID}`;
+    const initial = await fetchDocumentState(documentName);
+    expect(liveCuesFromSnapshot(initial!)[0]!.text).toBe("branch fork");
+
+    const text = doc.getArray<Y.Map<unknown>>(CUES_ARRAY_KEY).get(0).get("text") as Y.Text;
+    text.insert(text.length, " edited");
+    await storeDocumentState(documentName, Y.encodeStateAsUpdate(doc));
+    const [stored] = await db
+      .select({ yjsState: schema.subtitleBranches.yjsState })
+      .from(schema.subtitleBranches)
+      .where(eq(schema.subtitleBranches.id, BRANCH_ID));
+    expect(liveCuesFromSnapshot(stored!.yjsState)[0]!.text).toBe("branch fork edited");
   });
 });

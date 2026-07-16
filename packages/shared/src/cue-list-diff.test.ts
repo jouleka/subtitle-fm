@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 import type { LiveCue } from './yjs';
-import { threeWayCueListDiff } from './cue-list-diff';
+import { mergeCueLists, threeWayCueListDiff } from './cue-list-diff';
 
 function cue(overrides: Partial<LiveCue> = {}): LiveCue {
   return {
@@ -81,6 +81,38 @@ describe('threeWayCueListDiff (SFM-37)', () => {
     expect(diff.rows).toHaveLength(2);
     expect(diff.rows.find((row) => row.base?.id === second.id)?.oursChangedFields).toEqual([
       'text',
+    ]);
+  });
+});
+
+describe('mergeCueLists (SFM-39)', () => {
+  test('combines independent live and branch edits', () => {
+    const first = cue({ text: 'first', id: 'first', startMs: 0, orderIndex: 0 });
+    const second = cue({ text: 'second', id: 'second', startMs: 2_000, orderIndex: 1 });
+    const result = mergeCueLists(
+      [first, second],
+      [{ ...first, text: 'live first' }, second],
+      [first, { ...second, text: 'branch second' }],
+    );
+    expect(result.conflicts).toHaveLength(0);
+    expect(result.cues.map((item) => item.text)).toEqual(['live first', 'branch second']);
+  });
+
+  test('refuses divergent edits to the same cue', () => {
+    const base = cue({ text: 'base', id: 'same' });
+    const result = mergeCueLists([base], [{ ...base, text: 'live' }], [{ ...base, text: 'branch' }]);
+    expect(result.cues).toHaveLength(0);
+    expect(result.conflicts).toHaveLength(1);
+  });
+
+  test('applies branch additions and removals while reindexing', () => {
+    const removed = cue({ text: 'remove', id: 'removed', orderIndex: 0, startMs: 0 });
+    const kept = cue({ text: 'keep', id: 'kept', orderIndex: 1, startMs: 2_000 });
+    const added = cue({ text: 'added', id: 'added', orderIndex: 2, startMs: 4_000 });
+    const result = mergeCueLists([removed, kept], [removed, kept], [kept, added]);
+    expect(result.cues.map((item) => [item.text, item.orderIndex])).toEqual([
+      ['keep', 0],
+      ['added', 1],
     ]);
   });
 });

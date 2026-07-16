@@ -6,6 +6,13 @@ import * as Y from "yjs";
 import { hydrateCuesIntoDoc, type CueSeed } from "@subtitle-fm/shared/yjs";
 
 const LIVE_LABEL = "live";
+export const BRANCH_DOCUMENT_PREFIX = "branch:";
+
+export function branchIdFromDocumentName(documentName: string): string | null {
+  return documentName.startsWith(BRANCH_DOCUMENT_PREFIX)
+    ? documentName.slice(BRANCH_DOCUMENT_PREFIX.length)
+    : null;
+}
 
 /**
  * Stable clientID for the seed hydration. Yjs's Y.Doc defaults to a random
@@ -29,6 +36,21 @@ const SEED_CLIENT_ID = 1;
 export async function fetchDocumentState(
   documentName: string,
 ): Promise<Uint8Array | null> {
+  const branchId = branchIdFromDocumentName(documentName);
+  if (branchId) {
+    const [branch] = await db
+      .select({ yjsState: schema.subtitleBranches.yjsState })
+      .from(schema.subtitleBranches)
+      .where(
+        and(
+          eq(schema.subtitleBranches.id, branchId),
+          eq(schema.subtitleBranches.status, "open"),
+        ),
+      )
+      .limit(1);
+    return branch?.yjsState ?? null;
+  }
+
   const [snapshot] = await db
     .select({ yjsState: schema.snapshots.yjsState })
     .from(schema.snapshots)
@@ -74,6 +96,22 @@ export async function storeDocumentState(
   documentName: string,
   state: Uint8Array,
 ): Promise<void> {
+  const branchId = branchIdFromDocumentName(documentName);
+  if (branchId) {
+    const [updated] = await db
+      .update(schema.subtitleBranches)
+      .set({ yjsState: state, updatedAt: new Date() })
+      .where(
+        and(
+          eq(schema.subtitleBranches.id, branchId),
+          eq(schema.subtitleBranches.status, "open"),
+        ),
+      )
+      .returning({ id: schema.subtitleBranches.id });
+    if (!updated) throw new Error(`open subtitle branch ${branchId} not found`);
+    return;
+  }
+
   await db
     .insert(schema.snapshots)
     .values({

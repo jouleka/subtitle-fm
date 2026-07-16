@@ -16,6 +16,16 @@ export async function fetchCurrentDocumentState(episodeId: string): Promise<Uint
   return new Uint8Array(await response.arrayBuffer());
 }
 
+export async function fetchBranchDocumentState(branchId: string): Promise<Uint8Array> {
+  const documentName = `branch:${branchId}`;
+  const response = await fetch(
+    `${collabBase}/internal/documents/${encodeURIComponent(documentName)}/state`,
+    { headers: authHeaders() },
+  );
+  if (!response.ok) throw new Error(`collab branch state request failed: ${response.status}`);
+  return new Uint8Array(await response.arrayBuffer());
+}
+
 export async function restoreCollaborativeSnapshot(
   episodeId: string,
   snapshotId: string,

@@ -27,6 +27,7 @@ const currentStateMock = mock(async () => currentState);
 
 mock.module('../lib/collab', () => ({
   fetchCurrentDocumentState: currentStateMock,
+  fetchBranchDocumentState: mock(async () => currentState),
   restoreCollaborativeSnapshot: restoreMock,
 }));
 
