@@ -1,16 +1,18 @@
 <script lang="ts">
   import type { LiveCue, RetimeResult } from "@subtitle-fm/shared/yjs";
-  import type { PresenceUser } from "$lib/presence";
+  import type { PresenceUser, RemoteCaret, TextSelection } from "$lib/presence";
   import { formatMs, parseTimecode } from "$lib/format";
-  import { segmentOverrideTags } from "$lib/override-tags";
   import { classifyCueKeydown } from "$lib/cue-keys";
+  import { decorateWithRemoteCarets } from "$lib/remote-carets";
 
   let {
     cue,
     onTextEdit,
     onRetime,
     remoteUsers = [],
+    remoteCarets = [],
     onFocusCue,
+    onTextSelection,
     onClearReview,
     onSplitCue,
     onMoveCue,
@@ -22,7 +24,9 @@
     onTextEdit: (id: string, newText: string) => void;
     onRetime: (id: string, startMs: number, endMs: number) => RetimeResult;
     remoteUsers?: PresenceUser[];
+    remoteCarets?: RemoteCaret[];
     onFocusCue: (id: string) => void;
+    onTextSelection: (selection: TextSelection | null) => void;
     onClearReview: (id: string) => void;
     onSplitCue: (id: string, caretOffset: number) => void;
     onMoveCue: (id: string, direction: "up" | "down") => void;
@@ -48,7 +52,7 @@
   // it once (Svelte's state_referenced_locally warning is expected/benign) — the
   // sync $effect + handlers keep it current after mount.
   let highlightText = $state(cue.text);
-  const segments = $derived(segmentOverrideTags(highlightText));
+  const decoratedSegments = $derived(decorateWithRemoteCarets(highlightText, remoteCarets));
 
   // SINGLE programmatic writer of the textarea value — also updates the mirror,
   // so the transparent textarea and the backdrop that paints its text can never
@@ -90,7 +94,10 @@
   function handleTextInput() {
     if (textEl) highlightText = textEl.value; // mirror the visible value, always
     if (composing) return;
-    if (textEl) onTextEdit(cue.id, textEl.value);
+    if (textEl) {
+      onTextEdit(cue.id, textEl.value);
+      publishTextSelection();
+    }
   }
 
   function handleCompositionEnd() {
@@ -98,7 +105,20 @@
     if (textEl) {
       highlightText = textEl.value;
       onTextEdit(cue.id, textEl.value);
+      publishTextSelection();
     }
+  }
+
+  function publishTextSelection() {
+    if (!textEl || document.activeElement !== textEl || composing) return;
+    const start = textEl.selectionStart ?? textEl.value.length;
+    const end = textEl.selectionEnd ?? start;
+    const backwards = textEl.selectionDirection === "backward";
+    onTextSelection({
+      cueId: cue.id,
+      anchor: backwards ? end : start,
+      head: backwards ? start : end,
+    });
   }
 
   function handleTextKeydown(e: KeyboardEvent) {
@@ -196,12 +216,17 @@
     <!-- The backdrop paints the cue text; the {#each} below MUST stay on a single
          line with no whitespace between the spans. This div is white-space:pre-wrap,
          so any stray template whitespace would render as glyphs and break alignment. -->
-    <div class="cue-text-highlight" bind:this={highlightEl} aria-hidden="true">{#each segments as seg}<span class:tag={seg.kind === "tag"}>{seg.value}</span>{/each}</div>
+    <div class="cue-text-highlight" bind:this={highlightEl} aria-hidden="true">{#each decoratedSegments as seg}{#if seg.kind === "caret"}<span class="remote-caret" style:--caret-color={seg.caret.color}></span>{:else}<span class:tag={seg.kind === "tag"}>{seg.value}</span>{/if}{/each}</div>
     <textarea
       class="cue-text"
       bind:this={textEl}
       oninput={handleTextInput}
       onkeydown={handleTextKeydown}
+      onfocus={publishTextSelection}
+      onselect={publishTextSelection}
+      onkeyup={publishTextSelection}
+      onclick={publishTextSelection}
+      onblur={() => onTextSelection(null)}
       oncompositionstart={() => (composing = true)}
       oncompositionend={handleCompositionEnd}
       onscroll={syncScroll}
@@ -295,6 +320,15 @@
     background: #eef2ff;
     color: #3730a3;
     border-radius: 3px;
+  }
+  .remote-caret {
+    position: relative;
+    z-index: 1;
+    display: inline-block;
+    width: 0;
+    height: 1.2em;
+    border-left: 2px solid var(--caret-color);
+    vertical-align: -0.2em;
   }
   .badge {
     background: #f4b400;

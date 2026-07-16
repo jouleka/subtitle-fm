@@ -25,7 +25,14 @@
   import GlossaryPanel from "$lib/GlossaryPanel.svelte";
   import { matchingTermIds } from "$lib/glossary-match";
   import { fetchGlossary } from "$lib/glossary-api";
-  import { userColor, derivePresence, type PresenceUser, type PresenceState } from "$lib/presence";
+  import {
+    userColor,
+    derivePresence,
+    type PresenceUser,
+    type PresenceState,
+    type RemoteCaret,
+    type TextSelection,
+  } from "$lib/presence";
   import type { Cue } from "$lib/types";
   import type { GlossaryTerm } from "@subtitle-fm/shared";
 
@@ -47,10 +54,15 @@
 
   function setFocusedCue(id: string | null) {
     provider?.awareness?.setLocalStateField("focusedCueId", id);
+    if (!id) provider?.awareness?.setLocalStateField("textSelection", null);
     // Sticky: keep the badge anchored to the last focused cue while the user
     // interacts with the glossary panel. The awareness value still clears to null
     // on blur (presence stays accurate); only the local sticky id persists.
     if (id) focusedCueId = id;
+  }
+
+  function setTextSelection(selection: TextSelection | null) {
+    provider?.awareness?.setLocalStateField("textSelection", selection);
   }
 
   // Click-to-fill: insert a glossary term's translation at the focused cue's
@@ -139,6 +151,7 @@
   let activeTab = $state<"video" | "waveform" | "cues" | "glossary">("cues");
   let roster = $state<PresenceUser[]>([]);
   let presenceByCue = $state<Map<string, PresenceUser[]>>(new Map());
+  let caretsByCue = $state<Map<string, RemoteCaret[]>>(new Map());
 
   // Glossary: local $state so refetch (after add/edit/delete) updates the panel.
   let glossaryTerms = $state<GlossaryTerm[]>(data.glossaryTerms);
@@ -253,6 +266,7 @@
       );
       roster = derived.roster;
       presenceByCue = derived.byCue;
+      caretsByCue = derived.caretsByCue;
     };
     if (awareness) {
       awareness.on("change", updatePresence);
@@ -445,7 +459,9 @@
           <CueRow
             {cue}
             remoteUsers={presenceByCue.get(cue.id) ?? []}
+            remoteCarets={caretsByCue.get(cue.id) ?? []}
             onFocusCue={setFocusedCue}
+            onTextSelection={setTextSelection}
             onTextEdit={(id, t) => {
               if (provider) applyCueTextEdit(provider.document, id, t);
             }}
