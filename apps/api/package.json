@@ -20,7 +20,7 @@
     "@hono/zod-validator": "^0.4.2",
     "@subtitle-fm/db": "workspace:*",
     "@subtitle-fm/shared": "workspace:*",
-    "better-auth": "1.6.11",
+    "better-auth": "1.6.22",
     "bullmq": "^5.34.0",
     "drizzle-orm": "^0.45.2",
     "hono": "^4.6.13",
