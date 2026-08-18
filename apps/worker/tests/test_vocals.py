@@ -23,7 +23,6 @@ from subtitle_worker.stages.vocals import (
 
 from .conftest import requires_ffmpeg
 
-
 # ---------------------------------------------------------------------------
 # Pure helpers
 # ---------------------------------------------------------------------------

@@ -28,7 +28,6 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-import httpx
 import structlog
 
 from subtitle_worker.config import settings
@@ -40,6 +39,7 @@ from subtitle_worker.r2_client import (
     peaks_bucket,
     upload_file,
 )
+from subtitle_worker.safe_download import download_public_https
 from subtitle_worker.stages.asr import TranscriptSegment, transcribe_audio
 from subtitle_worker.stages.peaks import generate_waveform_data
 from subtitle_worker.stages.preprocess import preprocess_for_asr
@@ -79,12 +79,7 @@ def _download_http(url: str, work_dir: Path, name_hint: str) -> Path:
     # Partial-file note: if iter_bytes raises mid-stream, `target` is left
     # half-written. The handler's `finally` rmtree(work_dir) cleans it up;
     # we don't try to remove on error here to keep the failure observable.
-    with httpx.stream("GET", url, follow_redirects=True, timeout=120.0) as r:
-        r.raise_for_status()
-        with target.open("wb") as f:
-            for chunk in r.iter_bytes():
-                f.write(chunk)
-    return target
+    return download_public_https(url, target)
 
 
 def _download_r2_key(key: str, work_dir: Path, name_hint: str) -> Path:
@@ -233,6 +228,17 @@ def handler(event: dict[str, Any]) -> dict[str, Any]:
         # caller (worker-runner) should never send unsupported stages here.
         raise ValueError(f"unsupported stage {stage!r}; supported: {sorted(SUPPORTED_STAGES)}")
 
+    # The presence checks above establish these dispatcher fields as strings;
+    # explicit narrowing keeps the stage functions and webhook client typed.
+    if not isinstance(stage, str):
+        raise ValueError("stage must be a string")
+    if not isinstance(episode_id, str):
+        raise ValueError("episodeId must be a string")
+    if not isinstance(webhook_url, str):
+        raise ValueError("webhookUrl must be a string")
+    if not isinstance(pipeline_run_id, str):
+        raise ValueError("pipelineRunId must be a string")
+
     secret = _resolve_webhook_secret()
     log.info("handler.start", stage=stage, episode_id=episode_id, event_id=event_id)
 
@@ -301,6 +307,6 @@ def handler(event: dict[str, Any]) -> dict[str, Any]:
 
 
 if __name__ == "__main__":
-    import runpod  # type: ignore[import-untyped]
+    import runpod  # type: ignore[import-not-found]
 
     runpod.serverless.start({"handler": handler})

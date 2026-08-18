@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: bun
+    directory: '/'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      bun-dependencies:
+        patterns: ['*']
+  - package-ecosystem: uv
+    directory: '/apps/worker'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      worker-dependencies:
+        patterns: ['*']
+  - package-ecosystem: github-actions
+    directory: '/'
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      workflow-actions:
+        patterns: ['*']

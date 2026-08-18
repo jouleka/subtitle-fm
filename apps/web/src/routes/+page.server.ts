@@ -1,6 +1,7 @@
 import { error, fail } from '@sveltejs/kit';
 import { PUBLIC_API_URL } from '$env/static/public';
 import { buildCatalog } from '$lib/catalog';
+import { isUnsupportedMediaPageUrl } from '$lib/source-media';
 import type { Episode, Show } from '$lib/types';
 import type { Actions, PageServerLoad } from './$types';
 
@@ -75,6 +76,12 @@ export const actions: Actions = {
     ) {
       return fail(400, { values, message: 'Check the show, episode numbers, media URL, and language codes.' });
     }
+    if (isUnsupportedMediaPageUrl(values.sourceUrl)) {
+      return fail(400, {
+        values,
+        message: 'YouTube and Vimeo page links are not media files. Upload the source file instead.',
+      });
+    }
 
     const response = await fetch(`${PUBLIC_API_URL}/episodes`, {
       method: 'POST',
@@ -97,7 +104,11 @@ export const actions: Actions = {
       return fail(401, { values, message: 'Sign in with Discord to submit an episode.' });
     }
     if (response.status === 409) {
-      return fail(409, { values, message: 'That season and episode already exists.', episodeId: body.id });
+      return fail(409, {
+        values,
+        message: `Season ${seasonNumber}, Episode ${number} already exists for this show.`,
+        existingEpisodeId: body.id,
+      });
     }
     if (!response.ok || !body.id) {
       return fail(response.status || 500, { values, message: 'The episode could not be submitted. Please try again.' });

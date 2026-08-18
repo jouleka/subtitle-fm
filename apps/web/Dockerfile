@@ -1,9 +1,9 @@
 # syntax=docker/dockerfile:1
-FROM oven/bun:1
+FROM oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3
 
 WORKDIR /app
 COPY . .
-RUN bun install --frozen-lockfile 2>/dev/null || bun install
+RUN bun install --frozen-lockfile
 
 # SvelteKit's public variables are compiled into the server/client bundle.
 # Render exposes service environment variables as Docker build arguments.

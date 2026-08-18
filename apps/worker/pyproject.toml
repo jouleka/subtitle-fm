@@ -25,6 +25,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "boto3-stubs[s3]>=1.35.0",
     "ruff>=0.8.0",
     "mypy>=1.13.0",
     "pytest>=8.3.0",
@@ -59,6 +60,8 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "UP", "B", "SIM", "RUF"]
+# Preserve established public exception names and intentional typographic dashes.
+ignore = ["N818", "RUF002", "RUF003"]
 
 [tool.mypy]
 python_version = "3.11"

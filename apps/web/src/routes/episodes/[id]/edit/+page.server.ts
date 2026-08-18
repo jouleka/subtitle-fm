@@ -19,7 +19,7 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request, url
   const episode = (await epRes.json()) as Episode;
 
   const branchId = url.searchParams.get("branch");
-  const [cuesRes, glossaryRes, branchRes, accessRes] = await Promise.all([
+  const [cuesRes, glossaryRes, branchRes, accessRes, collabTicketRes] = await Promise.all([
     fetch(`${PUBLIC_API_URL}/episodes/${params.id}/cues`, { headers: { cookie } }),
     fetch(`${PUBLIC_API_URL}/shows/${episode.showId}/glossary`, { headers: { cookie } }),
     branchId
@@ -28,6 +28,10 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request, url
         })
       : Promise.resolve(null),
     fetch(`${PUBLIC_API_URL}/shows/${episode.showId}/access`, { headers: { cookie } }),
+    fetch(`${PUBLIC_API_URL}/account/collab-ticket`, {
+      method: "POST",
+      headers: { cookie },
+    }),
   ]);
   if (!cuesRes.ok) throw error(cuesRes.status, "Failed to load cues");
   if (branchRes && !branchRes.ok) throw error(branchRes.status, "Branch not found");
@@ -38,6 +42,9 @@ export const load: PageServerLoad = async ({ params, fetch, parent, request, url
     : [];
   if (!accessRes.ok) throw error(accessRes.status, "Failed to load contributor access");
   const access = (await accessRes.json()) as ShowAccess;
+  const collabTicket = collabTicketRes.ok
+    ? ((await collabTicketRes.json()) as { ticket: string }).ticket
+    : null;
 
-  return { episode, cues, glossaryTerms, branch, access };
+  return { episode, cues, glossaryTerms, branch, access, collabTicket };
 };

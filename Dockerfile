@@ -16,7 +16,7 @@
 # docs/runbooks/deploy.md for the per-service env var matrix). Run DB
 # migrations (`bun run --filter @subtitle-fm/db migrate`) once before starting
 # the services that touch Postgres.
-FROM oven/bun:1 AS runtime
+FROM oven/bun:1.3.5@sha256:e90cdbaf9ccdb3d4bd693aa335c3310a6004286a880f62f79b18f9b1312a8ec3 AS runtime
 
 ARG APP=stremio
 WORKDIR /app
@@ -24,7 +24,7 @@ WORKDIR /app
 # The whole monorepo (minus .dockerignore). bun install resolves the workspace
 # so apps/<APP> can import @subtitle-fm/{db,shared,ass} from /app/node_modules.
 COPY . .
-RUN bun install --frozen-lockfile 2>/dev/null || bun install
+RUN bun install --frozen-lockfile
 
 ENV NODE_ENV=production
 

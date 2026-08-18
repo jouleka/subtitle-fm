@@ -8,25 +8,24 @@
 </script>
 
 {#if visible.length === 0}
-  <p class="empty">No episodes submitted yet.</p>
+  <div class="empty"><span>00</span><p>No episodes submitted yet.</p></div>
 {:else}
   <ol class="episodes">
     {#each visible as episode (episode.id)}
       <li>
-        <div class="episode-number">{episode.number}</div>
+        <div class="episode-number">{String(episode.number).padStart(2, '0')}</div>
         <div class="episode-copy">
           <strong>{episodeName(episode)}</strong>
           <span>{episode.sourceLanguage.toUpperCase()} → {episode.targetLanguage.toUpperCase()}</span>
         </div>
-        <span class:published={episode.status === 'published'} class="status">
-          {statusLabel(episode.status)}
-        </span>
+        <span class:published={episode.status === 'published'} class="status"><i></i>{statusLabel(episode.status)}</span>
         <div class="episode-actions">
           {#if episode.status === 'published'}
             <a href={`${PUBLIC_API_URL}/episodes/${episode.id}/subtitle.ass`}>ASS</a>
             <a href={`${PUBLIC_API_URL}/episodes/${episode.id}/subtitle.srt`}>SRT</a>
+            <a href={`${PUBLIC_API_URL}/episodes/${episode.id}/subtitle.vtt`}>VTT</a>
           {:else if signedIn && ['ready_for_edit', 'in_review'].includes(episode.status)}
-            <a class="edit" href={`/episodes/${episode.id}/edit`}>Open editor</a>
+            <a class="edit" href={`/episodes/${episode.id}/edit`}>Open editor <span>→</span></a>
           {/if}
         </div>
       </li>
@@ -35,18 +34,29 @@
 {/if}
 
 <style>
-  .episodes { display: grid; gap: 0.2rem; margin: 0; padding: 0; list-style: none; }
-  li { display: grid; grid-template-columns: 2rem minmax(0, 1fr) auto auto; gap: 0.7rem; min-height: 3.35rem; padding: 0.45rem 0; align-items: center; border-top: 1px solid #ece9f0; }
-  .episode-number { display: grid; width: 1.8rem; height: 1.8rem; place-items: center; border-radius: 0.5rem; background: #f1eef6; color: #5d526c; font: 800 0.72rem/1 system-ui, sans-serif; }
+  .episodes { display: grid; margin: 0; border-top: 1px solid #b9bbb5; padding: 0; list-style: none; }
+  li { display: grid; grid-template-columns: 3.2rem minmax(0, 1fr) auto auto; gap: 1rem; min-height: 5rem; align-items: center; border-bottom: 1px solid #c7c8c2; }
+  .episode-number { color: #bd654d; font: 0.58rem ui-monospace, SFMono-Regular, Menlo, monospace; }
   .episode-copy { min-width: 0; }
   .episode-copy strong, .episode-copy span { display: block; }
-  .episode-copy strong { overflow: hidden; color: #211d29; font-size: 0.86rem; text-overflow: ellipsis; white-space: nowrap; }
-  .episode-copy span { margin-top: 0.12rem; color: #8a8492; font-size: 0.68rem; }
-  .status { border-radius: 999px; background: #f3f0f6; padding: 0.25rem 0.5rem; color: #71697d; font-size: 0.66rem; font-weight: 800; white-space: nowrap; }
-  .status.published { background: #e4f7ec; color: #167a46; }
-  .episode-actions { display: flex; gap: 0.35rem; }
-  .episode-actions a { border: 1px solid #ded8e8; border-radius: 0.42rem; padding: 0.28rem 0.42rem; color: #6d28d9; font-size: 0.65rem; font-weight: 850; text-decoration: none; }
-  .episode-actions a.edit { border-color: #6d28d9; background: #6d28d9; color: white; }
-  .empty { margin: 0; padding: 1rem 0; color: #8a8492; font-size: 0.85rem; }
-  @media (max-width: 560px) { li { grid-template-columns: 2rem minmax(0, 1fr) auto; } .episode-actions { grid-column: 2 / -1; } }
+  .episode-copy strong { overflow: hidden; color: #24292a; font-size: 0.78rem; text-overflow: ellipsis; white-space: nowrap; }
+  .episode-copy span { margin-top: 0.18rem; color: #8a8f8e; font: 0.52rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .status { display: flex; align-items: center; gap: 0.35rem; color: #6f7675; font-size: 0.58rem; font-weight: 750; white-space: nowrap; }
+  .status i { width: 0.35rem; height: 0.35rem; border-radius: 50%; background: #b2895b; }
+  .status.published { color: #4d6f5b; }
+  .status.published i { background: #668971; }
+  .episode-actions { display: flex; justify-content: flex-end; gap: 0.35rem; }
+  .episode-actions a { border: 1px solid #afb1ab; border-radius: 0.15rem; padding: 0.35rem 0.45rem; color: #4f5756; font: 750 0.52rem ui-monospace, SFMono-Regular, Menlo, monospace; text-decoration: none; }
+  .episode-actions a:hover { border-color: #a35a45; color: #a35a45; }
+  .episode-actions a.edit { display: inline-flex; gap: 1rem; border-color: #252a2b; background: #252a2b; padding-inline: 0.65rem; color: #f4f2ec; font-family: inherit; }
+  .empty { display: grid; grid-template-columns: 3.2rem 1fr; min-height: 5rem; align-items: center; border-top: 1px solid #b9bbb5; border-bottom: 1px solid #c7c8c2; }
+  .empty span { color: #bd654d; font: 0.58rem ui-monospace, SFMono-Regular, Menlo, monospace; }
+  .empty p { margin: 0; color: #858a89; font-size: 0.72rem; }
+
+  @media (max-width: 620px) {
+    li { grid-template-columns: 2rem minmax(0, 1fr); gap: 0.35rem 0.7rem; padding: 0.75rem 0; }
+    .status { grid-column: 2; }
+    .episode-actions { grid-column: 2; justify-content: flex-start; margin-top: 0.2rem; }
+    .empty { grid-template-columns: 2rem 1fr; }
+  }
 </style>

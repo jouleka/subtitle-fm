@@ -1,106 +1,129 @@
 # Subtitle.fm
 
-Community-driven fansub platform with AI bootstrap.
+[![CI](https://github.com/jouleka/subtitle-fm/actions/workflows/ci.yml/badge.svg)](https://github.com/jouleka/subtitle-fm/actions/workflows/ci.yml)
+[![Secret scan](https://github.com/jouleka/subtitle-fm/actions/workflows/secret-scan.yml/badge.svg)](https://github.com/jouleka/subtitle-fm/actions/workflows/secret-scan.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Stack
+Subtitle.fm is an early-stage, community-driven subtitle production platform. It combines an
+AI-assisted transcription and translation pipeline with a browser editor, waveform timing,
+glossaries, review workflows, realtime collaboration, and a Stremio subtitle add-on.
 
-| Piece | Tech |
-|---|---|
-| API | Hono on Bun (TypeScript) |
-| Web editor | SvelteKit + JASSUB + peaks.js + Yjs |
-| Realtime collab server | Hocuspocus (Node) |
-| Stremio addon | stremio-addon-sdk (Node) |
-| ASR / translation worker | Python + faster-whisper + anime-whisper + Demucs |
-| Database | Postgres (Drizzle ORM) |
-| Queue | BullMQ on Redis |
-| Object storage | Cloudflare R2 |
-| GPU host | RunPod serverless RTX 4090 |
-| Payments | Lemon Squeezy (merchant of record) |
+> [!IMPORTANT]
+> This project is under active development and has not received an independent security audit.
+> Only process media you are authorized to use, and review generated subtitles before publishing.
 
-## Layout
+## What is included
 
-```
-subtitle-fm/
-├── apps/
-│   ├── api/         # Hono REST API
-│   ├── web/         # SvelteKit editor
-│   ├── stremio/     # Stremio subtitle addon
-│   ├── collab/      # Hocuspocus realtime server
-│   └── worker/      # Python ASR + translation worker
-├── packages/
-│   ├── shared/      # Shared TS types
-│   ├── db/          # Drizzle schema + migrations
-│   └── ass/         # ASS parse/serialize helpers
-└── docs/
-    └── superpowers/specs/   # Design spec
-```
+- Episode ingestion from authenticated direct uploads or public HTTPS media URLs
+- Audio preprocessing, vocal isolation, faster-whisper ASR, and assisted translation
+- SvelteKit subtitle editor with ASS rendering, waveform timing, and Yjs collaboration
+- Show glossaries, cue review flags, snapshots, branches, audit history, and role-based publishing
+- Postgres persistence, Redis/BullMQ jobs, Cloudflare R2 artifacts, and RunPod worker dispatch
+- Stremio add-on and versioned API access
 
-## Prerequisites
+## Architecture
 
-- Bun >= 1.3
-- Node >= 22 (Hocuspocus runtime)
-- Python >= 3.11
-- ffmpeg
-- Postgres 15+ (local) or Neon (prod)
-- Redis (local) or Upstash (prod)
+| Component            | Technology       | Purpose                                                  |
+| -------------------- | ---------------- | -------------------------------------------------------- |
+| `apps/web`           | SvelteKit        | Public site and subtitle editor                          |
+| `apps/api`           | Hono on Bun      | REST API, auth, ingestion, billing, and webhooks         |
+| `apps/collab`        | Hocuspocus + Yjs | Authenticated realtime editing                           |
+| `apps/worker-runner` | BullMQ           | Pipeline dispatch and retries                            |
+| `apps/worker`        | Python           | ASR, preprocessing, translation, and waveform generation |
+| `apps/stremio`       | Stremio SDK      | Subtitle add-on                                          |
+| `packages/db`        | Drizzle ORM      | Schema and migrations                                    |
+| `packages/shared`    | TypeScript       | Shared contracts and queue payloads                      |
+| `packages/ass`       | TypeScript       | ASS subtitle parsing and serialization                   |
 
-## Setup
+The default production blueprint targets Render for the web-facing services, Cloudflare R2 for
+objects, Postgres for durable state, Redis for queues, and RunPod for GPU work. These providers are
+replaceable; credentials are always supplied at runtime and are never committed.
+
+## Requirements
+
+- [Bun](https://bun.sh/) 1.3 or newer
+- Node.js 22 or newer
+- Python 3.11 or newer and [uv](https://docs.astral.sh/uv/)
+- Docker with Compose (recommended for local Postgres and Redis)
+- `ffmpeg` for local worker execution
+
+## Local setup
 
 ```bash
-# Install Bun workspace deps
-bun install
+git clone https://github.com/jouleka/subtitle-fm.git
+cd subtitle-fm
 
-# Python worker (optional locally — runs on RunPod in prod)
-cd apps/worker && uv sync && cd ../..
-
-# Env
 cp .env.example .env
-# fill in values (DATABASE_URL and REDIS_URL match docker-compose defaults)
+bun install --frozen-lockfile
+uv sync --project apps/worker --extra dev --frozen
 
-# Local services (Postgres 16 + Redis 7)
-docker compose up -d
-
-# DB migrations
+docker compose up -d postgres redis
 bun run db:migrate
 ```
 
-### Regenerating migrations after schema changes
+For local development, fill only the integrations you intend to exercise in `.env`. Generate
+secrets with `openssl rand -base64 32`; do not reuse production values. The checked-in database and
+Redis URLs match the Compose ports (`5433` and `6380`).
+
+Start services in separate terminals:
 
 ```bash
-bun run db:generate   # writes packages/db/migrations/NNNN_*.sql
-bun run db:migrate    # applies to DATABASE_URL
+bun run dev:api       # http://localhost:3000
+bun run dev:web       # http://localhost:5173
+bun run dev:collab    # ws://localhost:1234
+bun run dev:worker    # BullMQ dispatcher
+bun run dev:stremio   # http://localhost:7000
 ```
 
-## Dev
+The Python GPU worker can be run separately with:
 
 ```bash
-bun run dev:api      # http://localhost:3000
-bun run dev:web      # http://localhost:5173
-bun run dev:collab   # ws://localhost:1234
-bun run dev:stremio  # http://localhost:7000
-
-# Python worker
-cd apps/worker && uv run python -m subtitle_worker
+uv run --project apps/worker python -m subtitle_worker
 ```
 
-## End-to-end smoke test
-
-Phase 1's exit gate. Drives 5 sample episodes through the full pipeline
-and verifies each reaches `ready_for_edit`. See
-[`docs/runbooks/phase-1-e2e-smoke.md`](docs/runbooks/phase-1-e2e-smoke.md)
-for setup and `bun run smoke` to execute.
-
-## Backfill external show IDs
-
-Prepare a reviewed mapping using `apps/api/external-ids.example.json`, then validate it against the target database before writing:
+## Validation
 
 ```bash
-bun run --filter @subtitle-fm/api backfill:external-ids external-ids.json --dry-run
-bun run --filter @subtitle-fm/api backfill:external-ids external-ids.json
+bun run typecheck
+bun test
+bun run build
+
+uv run --project apps/worker --extra dev ruff check apps/worker
+uv run --project apps/worker --extra dev mypy apps/worker/src
+uv run --project apps/worker --extra dev pytest apps/worker/tests
 ```
 
-The backfill is atomic and refuses missing shows, invalid ID formats, duplicate ownership, and overwriting a different existing ID.
+The Bun test suite expects the local Postgres and Redis services to be running and migrations to be
+applied. GPU-heavy behavior is mocked in unit tests.
 
-## Status
+## Database migrations
 
-Pre-alpha scaffold. See design doc for roadmap.
+```bash
+bun run db:generate
+bun run db:migrate
+```
+
+Review generated SQL before applying it. Migrations run automatically in the supplied Render API
+service before deployment.
+
+## Deployment
+
+[`render.yaml`](render.yaml) describes the API, web app, collaboration server, Stremio add-on, and
+worker runner. The GPU image under `apps/worker` is deployed separately to RunPod. Before deploying:
+
+1. Create separate production secrets and storage credentials.
+2. Configure Discord OAuth with the production Better Auth callback URL.
+3. Apply the Render blueprint and supply all `sync: false` values.
+4. Deploy the worker image and configure its signed webhook secret.
+5. Verify CORS origins, callback URLs, bucket access, and regional/legal requirements.
+
+## Contributing and security
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) before opening a pull request. Report vulnerabilities through
+GitHub's private vulnerability reporting flow as described in [SECURITY.md](SECURITY.md)—never put a
+credential or exploit detail in a public issue.
+
+## License
+
+Released under the [MIT License](LICENSE). This license applies to the software, not to third-party
+media, subtitle text, trademarks, models, or datasets processed with it.

@@ -95,7 +95,7 @@ def check_anthropic_available() -> None:
 def check_openai_available() -> None:
     """Fail loud if the openai SDK isn't installed."""
     try:
-        import openai  # noqa: F401
+        import openai  # type: ignore[import-not-found]  # noqa: F401
     except ImportError as e:
         raise OpenAINotAvailable(
             "openai SDK not importable. Install with `pip install openai` "
@@ -232,10 +232,8 @@ def merge_translation(
     """
     out: list[TranscriptSegment] = []
     for i, src in enumerate(sources):
-        if i in translated:
-            text, model_flag = translated[i]
-        else:
-            text, model_flag = src.text, True  # dropped line — flag for review
+        # A dropped line falls back to the source and remains flagged for review.
+        text, model_flag = translated.get(i, (src.text, True))
         low_input_conf = src.confidence < low_confidence_threshold
         out.append(
             TranscriptSegment(
@@ -417,5 +415,3 @@ def _build_openai_client() -> LLMClient:
             return choice.message.content
 
     return _OpenAIAdapter()
-
-

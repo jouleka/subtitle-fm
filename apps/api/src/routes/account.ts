@@ -7,6 +7,7 @@ import { API_DAILY_LIMITS, generateApiKey } from '../lib/api-access';
 import { createCheckout, customerPortalUrl } from '../lib/lemonsqueezy';
 import { db } from '../lib/db';
 import { requireSession, type AuthVariables } from '../lib/session';
+import { createCollabTicket } from '@subtitle-fm/shared/collab-ticket';
 
 const createApiKeySchema = z.object({
   name: z.string().trim().min(1).max(80),
@@ -19,6 +20,16 @@ function utcDay(date: Date): string {
 
 export const account = new Hono<{ Variables: AuthVariables }>()
   .use('*', requireSession)
+  .post('/collab-ticket', async (c) => {
+    const secret = process.env.COLLAB_SECRET;
+    if (!secret) return c.json({ error: 'collab_not_configured' }, 503);
+    const user = c.get('user')!;
+    const result = await createCollabTicket({ id: user.id, handle: user.name ?? user.id }, secret, {
+      ttlSeconds: 60,
+    });
+    c.header('Cache-Control', 'no-store');
+    return c.json(result);
+  })
   .get('/first-contribution', async (c) => {
     const [episode] = await db
       .select({ episodeId: schema.episodes.id })

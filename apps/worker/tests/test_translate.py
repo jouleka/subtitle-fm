@@ -31,7 +31,6 @@ from subtitle_worker.stages.translate import (
     translate_segments,
 )
 
-
 # ---------------------------------------------------------------------------
 # build_system_prompt
 # ---------------------------------------------------------------------------
@@ -223,7 +222,7 @@ class TestMergeTranslation:
         assert merged[0].needs_review is False  # 0.9 > 0.37
         assert merged[1].needs_review is True  # 0.2 < 0.37
 
-    def test_model_flag_OR_input_confidence(self) -> None:
+    def test_model_flag_or_input_confidence(self) -> None:
         # High ASR confidence but model flagged → still flagged.
         sources = [
             TranscriptSegment(start_ms=0, end_ms=1, text="A", confidence=0.95),
@@ -340,7 +339,7 @@ def test_low_confidence_threshold_matches_whisper_baseline() -> None:
     # confidence semantics change, this value must change too.
     import math
 
-    assert LOW_CONFIDENCE_THRESHOLD == pytest.approx(math.exp(-1.0), abs=0.01)
+    assert pytest.approx(math.exp(-1.0), abs=0.01) == LOW_CONFIDENCE_THRESHOLD
 
 
 # ---------------------------------------------------------------------------
@@ -374,8 +373,16 @@ class TestResolveProvider:
         called = {"anthropic": False, "openai": False}
         import subtitle_worker.stages.translate as t
 
-        monkeypatch.setattr(t, "_build_anthropic_client", lambda: called.__setitem__("anthropic", True) or "ANTH")
-        monkeypatch.setattr(t, "_build_openai_client", lambda: called.__setitem__("openai", True) or "OAI")
+        monkeypatch.setattr(
+            t,
+            "_build_anthropic_client",
+            lambda: called.__setitem__("anthropic", True) or "ANTH",
+        )
+        monkeypatch.setattr(
+            t,
+            "_build_openai_client",
+            lambda: called.__setitem__("openai", True) or "OAI",
+        )
         client, model = _resolve_provider(None)
         assert client == "ANTH"
         assert model == DEFAULT_MODEL

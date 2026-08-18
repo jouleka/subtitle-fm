@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { eq } from 'drizzle-orm';
 import { schema } from '@subtitle-fm/db';
 import { db } from '../lib/db';
@@ -14,7 +15,15 @@ function date(value: string | null | undefined): Date | null {
   return value ? new Date(value) : null;
 }
 
-export const webhooksLemonSqueezy = new Hono().post('/', async (c) => {
+export const webhooksLemonSqueezy = new Hono();
+webhooksLemonSqueezy.use(
+  '*',
+  bodyLimit({
+    maxSize: 1024 * 1024,
+    onError: (c) => c.json({ error: 'payload_too_large' }, 413),
+  }),
+);
+webhooksLemonSqueezy.post('/', async (c) => {
   const secret = process.env.LEMONSQUEEZY_WEBHOOK_SECRET;
   if (!secret) return c.json({ error: 'webhook_not_configured' }, 503);
   const raw = await c.req.text();

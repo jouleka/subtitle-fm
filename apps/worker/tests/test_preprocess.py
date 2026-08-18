@@ -26,7 +26,6 @@ from subtitle_worker.stages.preprocess import (
 
 from .conftest import requires_ffmpeg
 
-
 # ---------------------------------------------------------------------------
 # Pure logic (no ffmpeg needed)
 # ---------------------------------------------------------------------------

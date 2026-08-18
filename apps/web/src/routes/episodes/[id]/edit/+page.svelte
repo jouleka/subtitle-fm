@@ -248,7 +248,7 @@
   onMount(() => {
     if (!ready) return;
 
-    const token = data.session?.token;
+    const token = data.collabTicket;
     if (!token) {
       connectionStatus = "disconnected";
       return;

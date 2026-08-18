@@ -75,7 +75,7 @@ def check_faster_whisper_available() -> None:
     and use the rest of the pipeline.
     """
     try:
-        import faster_whisper  # noqa: F401
+        import faster_whisper  # type: ignore[import-untyped]  # noqa: F401
     except ImportError as e:
         raise FasterWhisperNotAvailable(
             "faster-whisper not importable. Install with "
@@ -157,8 +157,8 @@ def transcribe_audio(
     for seg in segments_iter:
         results.append(
             TranscriptSegment(
-                start_ms=int(round(seg.start * 1000)),
-                end_ms=int(round(seg.end * 1000)),
+                start_ms=round(seg.start * 1000),
+                end_ms=round(seg.end * 1000),
                 text=seg.text.strip(),
                 confidence=logprob_to_confidence(seg.avg_logprob),
             )

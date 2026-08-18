@@ -26,7 +26,7 @@ import shutil
 from dataclasses import dataclass
 from pathlib import Path
 
-import ffmpeg
+import ffmpeg  # type: ignore[import-untyped]
 
 # Defaults sized to typical TV anime (23–24 min episodes).
 DEFAULT_LEADING_TRIM_SEC = 120.0  # OP-typical; covers cold open + 90s OP

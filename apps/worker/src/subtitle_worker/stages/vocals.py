@@ -107,12 +107,13 @@ def isolate_vocals(
     # When `device` is None, omit it from the call so Separator uses its
     # own `"cuda" if available else "cpu"` default. Passing device=None
     # explicitly also works in current versions, but staying defensive.
-    separator_kwargs: dict[str, object] = {"model": model, "shifts": shifts}
-    if device is not None:
-        separator_kwargs["device"] = device
-    separator = Separator(**separator_kwargs)
+    separator = (
+        Separator(model=model, shifts=shifts)
+        if device is None
+        else Separator(model=model, device=device, shifts=shifts)
+    )
 
-    _, sources = separator.separate_audio_file(str(input_path))
+    _, sources = separator.separate_audio_file(input_path)
 
     if "vocals" not in sources:
         raise RuntimeError(

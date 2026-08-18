@@ -189,7 +189,7 @@ def test_transcribe_dispatch_routes_full_key_to_media_bucket(
     webhook_spy: WebhookSpy,
     stub_r2: dict[str, list[Any]],
 ) -> None:
-    def fake_isolate(audio: Path, work_dir: Path):  # noqa: ANN001
+    def fake_isolate(audio: Path, work_dir: Path):
         from subtitle_worker.stages.vocals import VocalsOutput
 
         vocals = work_dir / "vocals.wav"
@@ -257,7 +257,7 @@ def test_translate_dispatch_emits_cues_for_the_api(
 
     captured: dict[str, Any] = {}
 
-    def fake_translate(segments, glossary, show_title=None):  # noqa: ANN001
+    def fake_translate(segments, glossary, show_title=None):
         captured["segments"] = list(segments)
         captured["glossary"] = list(glossary)
         captured["show_title"] = show_title

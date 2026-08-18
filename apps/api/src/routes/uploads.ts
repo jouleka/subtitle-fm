@@ -10,6 +10,7 @@ import {
   UnsupportedContentTypeError,
 } from '../lib/uploads';
 import { log } from '../lib/log';
+import { requireSession, type AuthVariables } from '../lib/session';
 
 const PUT_EXPIRES_SEC = 15 * 60;
 /**
@@ -24,7 +25,7 @@ const createUploadSchema = z.object({
   sizeBytes: z.number().int().positive().max(MAX_UPLOAD_BYTES).optional(),
 });
 
-export const uploads = new Hono()
+export const uploads = new Hono<{ Variables: AuthVariables }>()
   /**
    * Surface allowed types so the editor can validate client-side before a
    * round-trip. No auth needed — this is metadata, not state.
@@ -45,17 +46,14 @@ export const uploads = new Hono()
    *  - getUrl:    presigned GET (7 days) — usable as POST /episodes sourceUrl
    *  - bucket/key: canonical R2 location, for downstream worker fetches
    */
-  .post('/source', zValidator('json', createUploadSchema), async (c) => {
+  .post('/source', requireSession, zValidator('json', createUploadSchema), async (c) => {
     const input = c.req.valid('json');
     let ext: string;
     try {
       ext = extForContentType(input.contentType);
     } catch (e) {
       if (e instanceof UnsupportedContentTypeError) {
-        return c.json(
-          { error: 'unsupported_content_type', contentType: input.contentType },
-          415,
-        );
+        return c.json({ error: 'unsupported_content_type', contentType: input.contentType }, 415);
       }
       throw e;
     }
@@ -63,8 +61,8 @@ export const uploads = new Hono()
     const key = generateSourceKey(input.contentType);
     // We presign GET alongside PUT to save the common-case round trip:
     // the caller's next step is almost always POST /episodes with this URL
-    // as sourceUrl. If we ever gate uploads behind auth, this is also where
-    // we'd authorize the GET on the caller, not just the file's existence.
+    // as sourceUrl. Authentication prevents anonymous storage-cost abuse;
+    // authorization of the resulting episode happens on POST /episodes.
     const [uploadUrl, getUrl] = await Promise.all([
       presignPut({ bucket: 'media', key, expiresInSec: PUT_EXPIRES_SEC }),
       presignGet({ bucket: 'media', key, expiresInSec: GET_EXPIRES_SEC }),

@@ -1,4 +1,5 @@
 import { Hono } from 'hono';
+import { bodyLimit } from 'hono/body-limit';
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
 import { schema, advanceEpisodeStatus, failEpisode } from '@subtitle-fm/db';
@@ -74,7 +75,15 @@ const payloadSchema = z.union([
   failed,
 ]);
 
-export const webhooksRunpod = new Hono().post('/', async (c) => {
+export const webhooksRunpod = new Hono();
+webhooksRunpod.use(
+  '*',
+  bodyLimit({
+    maxSize: 10 * 1024 * 1024,
+    onError: (c) => c.json({ error: 'payload_too_large' }, 413),
+  }),
+);
+webhooksRunpod.post('/', async (c) => {
   const secret = process.env.WORKER_WEBHOOK_SECRET;
   if (!secret) {
     log.error('webhook.runpod.unconfigured');

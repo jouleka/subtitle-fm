@@ -15,13 +15,16 @@ import { ingestEpisode } from '../lib/ingest';
 import { episodePeaksKey } from '../lib/artifacts';
 import { publishQueue } from '../lib/queue';
 import { getShowAccess } from '../lib/show-access';
+import { isAllowedSourceUrl } from '../lib/source-url';
 
 const createEpisodeSchema = z.object({
   showId: z.string().min(1),
   seasonNumber: z.number().int().nonnegative().default(1),
   number: z.number().int().nonnegative(),
   title: z.string().optional(),
-  sourceUrl: z.string().url(),
+  sourceUrl: z.string().url().refine(isAllowedSourceUrl, {
+    message: 'sourceUrl must be a credential-free HTTPS URL',
+  }),
   sourceLanguage: z.string().default('ja'),
   targetLanguage: z.string().default('en'),
 });

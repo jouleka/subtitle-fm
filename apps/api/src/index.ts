@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { logger as httpLogger } from 'hono/logger';
 import { cors } from 'hono/cors';
+import { secureHeaders } from 'hono/secure-headers';
 import { health } from './routes/health';
 import { episodes } from './routes/episodes';
 import { shows } from './routes/shows';
@@ -23,6 +24,18 @@ import { log } from './lib/log';
 const WEB_ORIGIN = process.env.WEB_URL ?? 'http://localhost:5173';
 
 export const app = new Hono<{ Variables: AuthVariables }>();
+
+app.use(
+  '*',
+  secureHeaders({
+    crossOriginResourcePolicy: 'cross-origin',
+    permissionsPolicy: {
+      camera: false,
+      geolocation: false,
+      microphone: false,
+    },
+  }),
+);
 
 app.use(
   '*',

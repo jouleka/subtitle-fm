@@ -4,7 +4,7 @@
 # real GPU inference swap the base to `runpod/pytorch:2.5.1-py3.11-cuda12.4`
 # or similar; the rest of the Dockerfile stays the same.
 
-FROM python:3.11-slim-bookworm AS runtime
+FROM python:3.11-slim-bookworm@sha256:2e32f7d302adc1c37428355c1e646897c0c53f4fd60b6a551245fb90ee129f91 AS runtime
 
 ARG AUDIOWAVEFORM_VERSION=1.10.2
 

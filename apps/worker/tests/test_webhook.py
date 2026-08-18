@@ -20,7 +20,6 @@ from subtitle_worker.webhook import (
     sign_sha256,
 )
 
-
 SECRET = "test-secret-do-not-use-in-prod"
 BODY = b'{"eventId":"abc","episodeId":"a3f4"}'
 
@@ -145,5 +144,5 @@ class TestPostSignedJson:
         )
         req = transport.last_request
         assert req is not None
-        assert "クラッシュ".encode("utf-8") in req.content
+        assert "クラッシュ".encode() in req.content
         assert req.headers[SIGNATURE_HEADER] == sign_sha256(req.content, SECRET)

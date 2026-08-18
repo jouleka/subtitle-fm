@@ -10,7 +10,6 @@ from typing import Any
 
 import pytest
 
-
 PROVIDER_PATH = Path(__file__).parents[3] / "integrations" / "bazarr" / "subtitlefm.py"
 
 
@@ -94,7 +93,7 @@ class FakeResponse:
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
-            raise RuntimeError("HTTP %s" % self.status_code)
+            raise RuntimeError(f"HTTP {self.status_code}")
 
 
 class FakeSession:
