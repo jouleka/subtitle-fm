@@ -1,11 +1,5 @@
 import type { ParsedAss } from './types';
 
-/**
- * Matches an ASS override block: `{...}`. ASS does not support nested or
- * escaped braces inside override blocks — libass treats the first `}` as the
- * terminator — so a non-greedy match between literal braces is sufficient.
- */
-const OVERRIDE_TAG_RE = /\{[^}]*\}/g;
 /** Non-breaking space escape: ASS `\h` → Unicode U+00A0. */
 const NBSP_RE = /\\h/g;
 /**
@@ -17,12 +11,35 @@ const NBSP_RE = /\\h/g;
 const LINE_BREAK_RE = /\\[Nn]/g;
 
 /**
+ * Remove complete ASS override blocks in a single forward pass. Unmatched
+ * opening braces remain literal text, matching the previous conversion
+ * behavior while avoiding a regular expression over untrusted subtitle text.
+ */
+function stripOverrideBlocks(text: string): string {
+  let result = '';
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const open = text.indexOf('{', cursor);
+    if (open === -1) return result + text.slice(cursor);
+
+    const close = text.indexOf('}', open + 1);
+    if (close === -1) return result + text.slice(cursor);
+
+    result += text.slice(cursor, open);
+    cursor = close + 1;
+  }
+
+  return result;
+}
+
+/**
  * Strip ASS override tags and convert in-text escape sequences (`\h`, `\N`,
  * `\n`) to their plain-text equivalents. Order matters: drop override blocks
  * first so we don't accidentally match `\h` / `\N` inside one.
  */
 function stripAssTags(text: string): string {
-  return text.replace(OVERRIDE_TAG_RE, '').replace(NBSP_RE, ' ').replace(LINE_BREAK_RE, '\n');
+  return stripOverrideBlocks(text).replace(NBSP_RE, ' ').replace(LINE_BREAK_RE, '\n');
 }
 
 function pad2(n: number): string {

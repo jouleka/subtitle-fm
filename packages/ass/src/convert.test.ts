@@ -27,6 +27,13 @@ describe('toSrt', () => {
     expect(out).toContain('Spinning text');
   });
 
+  test('strips multiple override blocks in a forward pass and preserves unmatched braces', () => {
+    const doc = parseAss(MINIMAL_ASS);
+    doc.cues[0]!.text = '{\\b1}bold{\\b0} and a literal { brace';
+    const out = toSrt(doc);
+    expect(out).toContain('bold and a literal { brace');
+  });
+
   test('converts \\N line breaks to literal newlines', () => {
     const out = toSrt(parseAss(OVERRIDE_HEAVY_ASS));
     expect(out).toContain('With\nline break');
