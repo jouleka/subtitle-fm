@@ -27,10 +27,10 @@
     "smoke": "bun scripts/smoke-test.ts"
   },
   "devDependencies": {
-    "@types/bun": "^1.3.14",
-    "@types/node": "^22.20.1",
-    "prettier": "^3.9.6",
-    "typescript": "^5.9.3"
+    "@types/bun": "^1.4.2",
+    "@types/node": "^26.6.4",
+    "prettier": "^3.9.9",
+    "typescript": "^7.0.2"
   },
   "overrides": {
     "body-parser": "1.20.6",
